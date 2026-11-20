@@ -8,10 +8,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Config holds the application configuration.
 type Config struct {
+	// Port is the HTTP server port.
 	Port int
 }
 
+// Load loads the configuration from environment variables.
+// It first attempts to load a .env file, then reads from the environment.
+// Returns a Config pointer or an error if validation fails.
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
