@@ -1,0 +1,37 @@
+# Go
+/bin/
+/*.exe
+/*.so
+/*.dll
+
+# Go workspace
+/go/
+
+# Dependency directories
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+/coverage.txt
+profile.out
+
+# Build output
+*.o
+*.a
