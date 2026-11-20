@@ -14,6 +14,7 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	router := httpapi.SetupRouter()
+	handler := httpapi.NewGinHandler()
+	router := handler.SetupRoutes()
 	router.Run(":" + strconv.Itoa(cfg.Port))
 }

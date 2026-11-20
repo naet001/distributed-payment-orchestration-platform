@@ -11,7 +11,8 @@ import (
 
 func TestHealthEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := SetupRouter()
+	handler := NewGinHandler()
+	router := handler.SetupRoutes()
 
 	req, _ := http.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -19,5 +20,5 @@ func TestHealthEndpoint(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, `{"status":"ok"}`+"", w.Body.String())
+	assert.Equal(t, `{"status":"ok"}`, w.Body.String())
 }
