@@ -12,6 +12,13 @@ import (
 type Config struct {
 	// Port is the HTTP server port.
 	Port int
+	// Database configuration
+	DBHost     string
+	DBPort     int
+	DBUser     string
+	DBPassword string
+	DBName     string
+	DBSSLMode  string
 }
 
 // Load loads the configuration from environment variables.
@@ -22,6 +29,7 @@ func Load() (*Config, error) {
 		log.Println("No .env file found")
 	}
 
+	// Load and validate PORT
 	portStr := os.Getenv("PORT")
 	if portStr == "" {
 		portStr = "8080"
@@ -36,5 +44,35 @@ func Load() (*Config, error) {
 		return nil, os.ErrInvalid
 	}
 
-	return &Config{Port: port}, nil
+	// Load database configuration
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+
+	dbPortStr := os.Getenv("DB_PORT")
+	if dbPortStr == "" {
+		dbPortStr = "5432"
+	}
+
+	dbPort, err := strconv.Atoi(dbPortStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbPort < 1 || dbPort > 65535 {
+		return nil, os.ErrInvalid
+	}
+
+	cfg := &Config{
+		Port:      port,
+		DBHost:    dbHost,
+		DBPort:    dbPort,
+		DBUser:    os.Getenv("DB_USER"),
+		DBPassword: os.Getenv("DB_PASSWORD"),
+		DBName:    os.Getenv("DB_NAME"),
+		DBSSLMode: os.Getenv("DB_SSL_MODE"),
+	}
+
+	return cfg, nil
 }
