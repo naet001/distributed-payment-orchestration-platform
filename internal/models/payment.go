@@ -1,26 +1,25 @@
 package models
 
-import (
-	"gorm.io/gorm"
-)
+import "time"
 
-// PaymentStatus represents the current state of a payment.
 type PaymentStatus string
 
-// Payment status constants.
 const (
 	PaymentStatusPending   PaymentStatus = "pending"
-	PaymentStatusCompleted PaymentStatus = "completed"
+	PaymentStatusSucceeded PaymentStatus = "succeeded"
 	PaymentStatusFailed    PaymentStatus = "failed"
-	PaymentStatusRefunded  PaymentStatus = "refunded"
+	PaymentStatusCancelled PaymentStatus = "cancelled"
 )
 
-// Payment represents a payment transaction.
 type Payment struct {
-	gorm.Model
-	Reference string        `gorm:"uniqueIndex;not null"`
-	Amount    int64         `gorm:"not null"`
-	Currency  string        `gorm:"size:3;not null"`
-	Status    PaymentStatus `gorm:"type:varchar(20);not null"`
-	Provider  string        `gorm:"not null"`
+	ID                uint          `gorm:"primaryKey"`
+	Reference         string        `gorm:"type:varchar(64);not null;uniqueIndex"`
+	Amount            int64         `gorm:"not null;check:amount > 0"`
+	Currency          string        `gorm:"type:char(3);not null"`
+	Status            PaymentStatus `gorm:"type:varchar(20);not null;index"`
+	Provider          string        `gorm:"type:varchar(30);not null"`
+	ProviderReference *string       `gorm:"type:varchar(100);uniqueIndex"`
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
