@@ -5,13 +5,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"example.com/payment-platform/internal/payment"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHealthEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewGinHandler()
+	handler := NewGinHandler(payment.NewService(&inMemoryPaymentRepository{}))
 	router := handler.SetupRoutes()
 
 	req, _ := http.NewRequest("GET", "/health", nil)

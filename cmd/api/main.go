@@ -8,6 +8,8 @@ import (
 	"example.com/payment-platform/internal/database"
 	"example.com/payment-platform/internal/httpapi"
 	"example.com/payment-platform/internal/models"
+	"example.com/payment-platform/internal/payment"
+	"example.com/payment-platform/internal/repositories"
 )
 
 func main() {
@@ -33,8 +35,9 @@ func main() {
 	}
 	log.Println("database migration completed")
 
-	// paymentRepo := repositories.NewGormPaymentRepository(db)
-	handler := httpapi.NewGinHandler()
+	paymentRepo := repositories.NewGormPaymentRepository(db)
+	paymentService := payment.NewService(paymentRepo)
+	handler := httpapi.NewGinHandler(paymentService)
 	router := handler.SetupRoutes()
 	router.Run(":" + strconv.Itoa(cfg.Port))
 }
