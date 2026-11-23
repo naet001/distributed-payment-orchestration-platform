@@ -55,7 +55,19 @@ func (r *GormPaymentRepository) FindByReference(ref string) (*models.Payment, er
 
 // Update saves changes to an existing payment.
 func (r *GormPaymentRepository) Update(payment *models.Payment) error {
-	return r.db.GetDB().Save(payment).Error
+	// Check if the payment exists first
+	var existing models.Payment
+	result := r.db.GetDB().First(&existing, payment.ID)
+	if result.Error != nil {
+		return result.Error
+	}
+	// Only update fields that should be mutable
+	return r.db.GetDB().Model(&existing).Updates(map[string]interface{}{
+		"amount":    payment.Amount,
+		"currency":  payment.Currency,
+		"status":    payment.Status,
+		"provider":  payment.Provider,
+	}).Error
 }
 
 // List retrieves one page of payments ordered by ID.
