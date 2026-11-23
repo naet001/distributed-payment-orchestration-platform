@@ -1,101 +1,111 @@
 # Distributed Payment Orchestration Platform
 
-A distributed platform for orchestrating payment workflows.
+A Go HTTP API that creates payment records and stores them in PostgreSQL. Each new payment gets a generated reference and starts with `pending` status.
 
-## Development
+## What it does
 
-### Prerequisites
+- `GET /health` returns the service health status.
+- `POST /payments` validates and stores a payment request.
+- PostgreSQL stores payment records. GORM applies the model schema at startup.
 
-- Go 1.21+
-- Podman or Docker
+## Requirements
+
+- Go 1.27.1 or later
 - PostgreSQL
 
-### Quick Start
+## Quick start
 
-1. **Clone the repository:**
-   ```bash
-   git clone git@github.com:naet001/distributed-payment-orchestration-platform.git
-   cd distributed-payment-orchestration-platform
-   ```
+1. Start PostgreSQL. For a local development database, you can use Podman:
 
-2. **Start PostgreSQL:**
    ```bash
-   podman run -d \
-     --name payment-db \
+   podman run --name payment-db \
      -e POSTGRES_USER=payment_user \
      -e POSTGRES_PASSWORD=payment_pass \
      -e POSTGRES_DB=payment_db \
      -p 5432:5432 \
-     docker.io/library/postgres:latest
+     -d docker.io/library/postgres:latest
    ```
 
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` with your database credentials.
+2. Create a `.env` file in the project root:
 
-4. **Install dependencies:**
-   ```bash
-   go mod download
+   ```dotenv
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=payment_user
+   DB_PASSWORD=payment_pass
+   DB_NAME=payment_db
+   DB_SSL_MODE=disable
+   PORT=8080
    ```
 
-5. **Run the server:**
+   The application reads `.env` when it starts. Environment variables set in the shell are also used.
+
+3. Run the API:
+
    ```bash
    go run ./cmd/api
    ```
 
-6. **Test the health endpoint:**
+   The server listens on port `8080` by default. It connects to PostgreSQL and applies the GORM model migration at startup.
+
+4. Check that the API is running:
+
    ```bash
    curl http://localhost:8080/health
    ```
 
-### Project Structure
+   Expected response:
 
-```
-.
-├── cmd/
-│   └── api/                    # Application entry point
-│       └── main.go
-├── internal/
-│   ├── config/                 # Configuration loading
-│   │   └── config.go
-│   ├── database/               # Database connection
-│   │   └── connection.go
-│   └── httpapi/                # HTTP handlers
-│       ├── handler.go
-│       └── handler_test.go
-├── .env.example                # Example environment variables
-├── go.mod                      # Go module
-├── go.sum                      # Dependency checksums
-└── README.md
+   ```json
+   {"status":"ok"}
+   ```
+
+## Create a payment
+
+Send a positive integer amount, a three-character currency, and a provider name of up to 30 characters:
+
+```bash
+curl -X POST http://localhost:8080/payments \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":1250,"currency":"USD","provider":"stripe"}'
 ```
 
-### Configuration
+The API returns `201 Created` with the stored payment. It generates a reference in the form `PAY_<32 hexadecimal characters>` and sets the initial status to `pending`. Currency is trimmed and converted to uppercase.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| PORT | 8080 | HTTP server port |
-| DB_HOST | localhost | Database host |
-| DB_PORT | 5432 | Database port |
-| DB_USER | - | Database username |
-| DB_PASSWORD | - | Database password |
-| DB_NAME | - | Database name |
-| DB_SSL_MODE | disable | SSL mode for database connection |
+Invalid JSON or payment fields return `400 Bad Request`.
 
-### Running Tests
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8080` | HTTP server port |
+| `DB_HOST` | `localhost` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_USER` | — | PostgreSQL user |
+| `DB_PASSWORD` | — | PostgreSQL password |
+| `DB_NAME` | — | PostgreSQL database name |
+| `DB_SSL_MODE` | — | PostgreSQL SSL mode; set this for your environment, such as `disable` for local development |
+
+## Run tests
 
 ```bash
 go test ./...
 ```
 
-## Architecture
+Build all packages with:
 
-- **Dependency Injection:** Handlers receive dependencies through constructors
-- **Clean Architecture:** Clear separation between layers
-- **GORM:** ORM for PostgreSQL database interactions
-- **Gin:** HTTP web framework
+```bash
+go build ./...
+```
 
-## License
+## Project flow
 
-MIT
+```mermaid
+flowchart TD
+    Request[HTTP request] --> Handler[Gin handler]
+    Handler --> Service[Payment service]
+    Service --> Repository[Payment repository]
+    Repository --> Database[(PostgreSQL)]
+```
+
+Application code is under `internal/`. The SQL schema migration files are under `migrations/`; startup currently uses GORM `AutoMigrate` for the payment model.
