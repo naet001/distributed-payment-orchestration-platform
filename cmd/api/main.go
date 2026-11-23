@@ -7,6 +7,7 @@ import (
 	"example.com/payment-platform/internal/config"
 	"example.com/payment-platform/internal/database"
 	"example.com/payment-platform/internal/httpapi"
+	"example.com/payment-platform/internal/models"
 )
 
 func main() {
@@ -26,6 +27,13 @@ func main() {
 		}
 	}()
 
+	err = db.GetDB().AutoMigrate(&models.Payment{})
+	if err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+	log.Println("database migration completed")
+
+	// paymentRepo := repositories.NewGormPaymentRepository(db)
 	handler := httpapi.NewGinHandler()
 	router := handler.SetupRoutes()
 	router.Run(":" + strconv.Itoa(cfg.Port))
