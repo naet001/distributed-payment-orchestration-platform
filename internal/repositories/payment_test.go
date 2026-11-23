@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"database/sql"
 	"testing"
 
 	"example.com/payment-platform/internal/models"
@@ -25,11 +26,38 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open test database: %v", err)
 	}
 
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Errorf("failed to get test database connection: %v", err)
+			return
+		}
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("failed to close test database: %v", err)
+		}
+	})
+
 	if err := db.AutoMigrate(&models.Payment{}); err != nil {
 		t.Fatalf("failed to migrate test database: %v", err)
 	}
 
 	return db
+}
+
+func TestSetupTestDBClosesConnection(t *testing.T) {
+	var sqlDB *sql.DB
+	t.Run("cleanup", func(t *testing.T) {
+		db := setupTestDB(t)
+		var err error
+		sqlDB, err = db.DB()
+		if err != nil {
+			t.Fatalf("failed to get SQL database: %v", err)
+		}
+	})
+
+	if err := sqlDB.Ping(); err == nil {
+		t.Fatal("Ping() error = nil after test cleanup, want closed database error")
+	}
 }
 
 func TestListRejectsInvalidBoundsBeforeDatabaseAccess(t *testing.T) {
@@ -266,7 +294,7 @@ func TestUpdate(t *testing.T) {
 
 	t.Run("update not found", func(t *testing.T) {
 		nonExistentPayment := &models.Payment{
-			ID:       999,
+			ID:        999,
 			Reference: "nonexistent",
 			Amount:    3000,
 			Currency:  "GBP",
