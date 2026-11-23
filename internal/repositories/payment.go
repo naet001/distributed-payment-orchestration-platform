@@ -63,10 +63,11 @@ func (r *GormPaymentRepository) Update(payment *models.Payment) error {
 	}
 	// Only update fields that should be mutable
 	return r.db.GetDB().Model(&existing).Updates(map[string]interface{}{
-		"amount":    payment.Amount,
-		"currency":  payment.Currency,
-		"status":    payment.Status,
-		"provider":  payment.Provider,
+		"amount":             payment.Amount,
+		"currency":           payment.Currency,
+		"status":             payment.Status,
+		"provider":           payment.Provider,
+		"provider_reference": payment.ProviderReference,
 	}).Error
 }
 

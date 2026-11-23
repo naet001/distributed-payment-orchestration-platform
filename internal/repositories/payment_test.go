@@ -264,9 +264,11 @@ func TestUpdate(t *testing.T) {
 	}
 
 	t.Run("successful update", func(t *testing.T) {
+		providerReference := "provider-ref-123"
 		payment.Amount = 3000
 		payment.Currency = "GBP"
 		payment.Status = models.PaymentStatusSucceeded
+		payment.ProviderReference = &providerReference
 
 		err := repo.Update(payment)
 		if err != nil {
@@ -289,6 +291,9 @@ func TestUpdate(t *testing.T) {
 
 		if found.Status != models.PaymentStatusSucceeded {
 			t.Fatalf("found.Status = %s, want %s", found.Status, models.PaymentStatusSucceeded)
+		}
+		if found.ProviderReference == nil || *found.ProviderReference != providerReference {
+			t.Fatalf("found.ProviderReference = %v, want %q", found.ProviderReference, providerReference)
 		}
 	})
 

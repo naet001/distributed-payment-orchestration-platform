@@ -423,8 +423,10 @@ func TestPaymentRepositoryUpdate(t *testing.T) {
 	}
 
 	// Update the payment
+	providerReference := "provider-update-test-ref"
 	payment.Amount = 5000
 	payment.Status = models.PaymentStatusSucceeded
+	payment.ProviderReference = &providerReference
 
 	err = repository.Update(payment)
 	if err != nil {
@@ -444,10 +446,13 @@ func TestPaymentRepositoryUpdate(t *testing.T) {
 	if found.Status != models.PaymentStatusSucceeded {
 		t.Fatalf("found.Status = %s, want %s", found.Status, models.PaymentStatusSucceeded)
 	}
+	if found.ProviderReference == nil || *found.ProviderReference != providerReference {
+		t.Fatalf("found.ProviderReference = %v, want %q", found.ProviderReference, providerReference)
+	}
 
 	// Update non-existent payment
 	nonExistentPayment := &models.Payment{
-		ID:       99999,
+		ID:        99999,
 		Reference: "nonexistent",
 		Amount:    1000,
 		Currency:  "USD",
