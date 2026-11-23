@@ -11,7 +11,6 @@
 │   ├── models/                  # Domain models (GORM)
 │   ├── repositories/            # Data access layer
 │   └── httpapi/                 # HTTP handlers (Gin)
-├── migrations/                  # Versioned SQL migrations
 ├── go.mod
 ├── go.sum
 └── README.md
@@ -57,8 +56,7 @@ go run ./cmd/api
 ## Database
 
 - PostgreSQL with GORM
-- AutoMigrate runs on startup for models
-- SQL migrations live in `migrations/` and use the `NNNNNN_description.up.sql` and `NNNNNN_description.down.sql` naming pattern
+- GORM `AutoMigrate` runs on startup and is the authoritative schema-management path
 - Connection pool configured via GORM
 - Environment variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
 

@@ -16,7 +16,7 @@ type Payment struct {
 	Reference         string        `gorm:"type:varchar(64);not null;uniqueIndex"`
 	Amount            int64         `gorm:"not null;check:amount > 0"`
 	Currency          string        `gorm:"type:char(3);not null"`
-	Status            PaymentStatus `gorm:"type:varchar(20);not null;index"`
+	Status            PaymentStatus `gorm:"type:varchar(20);not null;index;check:status IN ('pending', 'succeeded', 'failed', 'cancelled')"`
 	Provider          string        `gorm:"type:varchar(30);not null"`
 	ProviderReference *string       `gorm:"type:varchar(100);uniqueIndex"`
 
