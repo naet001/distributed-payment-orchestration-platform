@@ -57,6 +57,7 @@ go run ./cmd/api
 
 - PostgreSQL with GORM
 - GORM `AutoMigrate` runs on startup and is the authoritative schema-management path
+- Payment listing uses `List(limit, offset)` with a maximum page size of 100 and ID-ascending order
 - Connection pool configured via GORM
 - Environment variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
 
