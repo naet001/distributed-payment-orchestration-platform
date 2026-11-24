@@ -57,10 +57,10 @@
 
 A repeated result that matches the current terminal status is safe to accept. A conflicting result after `succeeded`, `failed`, or `cancelled` must not overwrite that terminal status; report the transition conflict for investigation. A cancellation is an internal action and is not inferred from an unknown provider status.
 
-- [ ] Map verified Paystack `success` to internal `succeeded`.
-- [ ] Map verified Paystack `failed` to internal `failed`.
-- [ ] Keep pending or unknown results from being marked successful.
-- [ ] Test known and unknown provider status values.
+- [x] Map verified Paystack `success` to internal `succeeded`.
+- [x] Map verified Paystack `failed` to internal `failed`.
+- [x] Keep pending or unknown results from being marked successful.
+- [x] Test known and unknown provider status values.
 
 ## 3.7 Handle provider errors and timeouts — Not started
 
