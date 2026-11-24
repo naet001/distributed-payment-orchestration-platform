@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"fmt"
+
 	"example.com/payment-platform/internal/database"
 	"example.com/payment-platform/internal/models"
 )
@@ -11,8 +13,10 @@ type PaymentRepository interface {
 	FindByID(id uint) (*models.Payment, error)
 	FindByReference(ref string) (*models.Payment, error)
 	Update(payment *models.Payment) error
-	List() ([]models.Payment, error)
+	List(limit, offset int) ([]models.Payment, error)
 }
+
+const MaxPaymentPageSize = 100
 
 // GormPaymentRepository implements PaymentRepository using GORM.
 type GormPaymentRepository struct {
@@ -51,13 +55,33 @@ func (r *GormPaymentRepository) FindByReference(ref string) (*models.Payment, er
 
 // Update saves changes to an existing payment.
 func (r *GormPaymentRepository) Update(payment *models.Payment) error {
-	return r.db.GetDB().Save(payment).Error
+	// Check if the payment exists first
+	var existing models.Payment
+	result := r.db.GetDB().First(&existing, payment.ID)
+	if result.Error != nil {
+		return result.Error
+	}
+	// Only update fields that should be mutable
+	return r.db.GetDB().Model(&existing).Updates(map[string]interface{}{
+		"amount":             payment.Amount,
+		"currency":           payment.Currency,
+		"status":             payment.Status,
+		"provider":           payment.Provider,
+		"provider_reference": payment.ProviderReference,
+	}).Error
 }
 
-// List retrieves all payments.
-func (r *GormPaymentRepository) List() ([]models.Payment, error) {
+// List retrieves one page of payments ordered by ID.
+func (r *GormPaymentRepository) List(limit, offset int) ([]models.Payment, error) {
+	if limit < 1 || limit > MaxPaymentPageSize {
+		return nil, fmt.Errorf("limit must be between 1 and %d", MaxPaymentPageSize)
+	}
+	if offset < 0 {
+		return nil, fmt.Errorf("offset must not be negative")
+	}
+
 	var payments []models.Payment
-	err := r.db.GetDB().Find(&payments).Error
+	err := r.db.GetDB().Order("id ASC").Limit(limit).Offset(offset).Find(&payments).Error
 	if err != nil {
 		return nil, err
 	}

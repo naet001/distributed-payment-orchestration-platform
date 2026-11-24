@@ -86,8 +86,14 @@ A distributed platform for orchestrating payment workflows.
 ### Running Tests
 
 ```bash
+# Run all tests (unit tests will run, integration tests require TEST_DATABASE_DSN)
 go test ./...
+
+# Run integration tests
+TEST_DATABASE_DSN="postgres://payment_user:payment_pass@localhost:5432/payment_db?sslmode=disable" go test ./internal/repositories/... -v
 ```
+
+**Note:** Integration tests in `internal/repositories/payment_integration_test.go` require a PostgreSQL database connection string in the `TEST_DATABASE_DSN` environment variable. These tests are skipped if the variable is not set.
 
 ## Architecture
 
