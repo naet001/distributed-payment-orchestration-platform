@@ -43,6 +43,9 @@ func (*inMemoryPaymentRepository) FindByReference(string) (*models.Payment, erro
 }
 
 func (*inMemoryPaymentRepository) Update(*models.Payment) error { return errors.New("not implemented") }
+func (*inMemoryPaymentRepository) TransitionStatus(uint, models.PaymentStatus, models.PaymentStatus) (bool, error) {
+	return false, errors.New("not implemented")
+}
 func (*inMemoryPaymentRepository) List() ([]models.Payment, error) {
 	return nil, errors.New("not implemented")
 }

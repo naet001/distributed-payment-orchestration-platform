@@ -11,6 +11,7 @@ type PaymentRepository interface {
 	FindByID(id uint) (*models.Payment, error)
 	FindByReference(ref string) (*models.Payment, error)
 	Update(payment *models.Payment) error
+	TransitionStatus(id uint, expected, next models.PaymentStatus) (bool, error)
 	List() ([]models.Payment, error)
 }
 
@@ -51,7 +52,27 @@ func (r *GormPaymentRepository) FindByReference(ref string) (*models.Payment, er
 
 // Update saves changes to an existing payment.
 func (r *GormPaymentRepository) Update(payment *models.Payment) error {
-	return r.db.GetDB().Save(payment).Error
+	var existing models.Payment
+	if err := r.db.GetDB().First(&existing, payment.ID).Error; err != nil {
+		return err
+	}
+	return r.db.GetDB().Model(&existing).Updates(map[string]interface{}{
+		"amount":             payment.Amount,
+		"currency":           payment.Currency,
+		"provider":           payment.Provider,
+		"provider_reference": payment.ProviderReference,
+	}).Error
+}
+
+// TransitionStatus changes a payment status only when the stored status matches expected.
+func (r *GormPaymentRepository) TransitionStatus(id uint, expected, next models.PaymentStatus) (bool, error) {
+	result := r.db.GetDB().Model(&models.Payment{}).
+		Where("id = ? AND status = ?", id, expected).
+		Update("status", next)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 // List retrieves all payments.
