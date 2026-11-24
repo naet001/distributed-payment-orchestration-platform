@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,11 +17,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 type inMemoryPaymentRepository struct {
-	payments []models.Payment
+	payments  []models.Payment
+	createErr error
 }
 
 func (r *inMemoryPaymentRepository) Create(p *models.Payment) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	r.payments = append(r.payments, *p)
 	return nil
 }
@@ -39,7 +50,7 @@ func (*inMemoryPaymentRepository) List() ([]models.Payment, error) {
 func TestCreatePayment(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repository := &inMemoryPaymentRepository{}
-	router := NewGinHandler(payment.NewService(repository)).SetupRoutes()
+	router := NewGinHandler(payment.NewService(repository), NewResponder(newTestLogger())).SetupRoutes()
 
 	request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(`{"amount":1250,"currency":"USD","provider":"stripe"}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -58,6 +69,26 @@ func TestCreatePayment(t *testing.T) {
 	require.Equal(t, created.Reference, repository.payments[0].Reference)
 }
 
+func TestCreatePaymentHidesAndLogsSaveError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const underlyingError = "database unavailable"
+	repository := &inMemoryPaymentRepository{createErr: errors.New(underlyingError)}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	router := NewGinHandler(payment.NewService(repository), NewResponder(logger)).SetupRoutes()
+
+	request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(`{"amount":1250,"currency":"USD","provider":"stripe"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.JSONEq(t, `{"error":"failed to create payment"}`, response.Body.String())
+	require.NotContains(t, response.Body.String(), underlyingError)
+	require.Contains(t, logs.String(), underlyingError)
+}
+
 func TestCreatePaymentRejectsInvalidRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -69,7 +100,7 @@ func TestCreatePaymentRejectsInvalidRequest(t *testing.T) {
 	} {
 		t.Run(body, func(t *testing.T) {
 			repository := &inMemoryPaymentRepository{}
-			router := NewGinHandler(payment.NewService(repository)).SetupRoutes()
+			router := NewGinHandler(payment.NewService(repository), NewResponder(newTestLogger())).SetupRoutes()
 
 			request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(body))
 			request.Header.Set("Content-Type", "application/json")

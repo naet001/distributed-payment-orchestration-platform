@@ -15,12 +15,13 @@ type Handler interface {
 
 // GinHandler implements Handler using the Gin framework.
 type GinHandler struct {
-	payments *payment.Service
+	payments  *payment.Service
+	responder *Responder
 }
 
 // NewGinHandler creates a new GinHandler instance.
-func NewGinHandler(payments *payment.Service) Handler {
-	return &GinHandler{payments: payments}
+func NewGinHandler(payments *payment.Service, responder *Responder) Handler {
+	return &GinHandler{payments: payments, responder: responder}
 }
 
 // SetupRoutes configures the Gin router with all application routes.
@@ -28,9 +29,7 @@ func (h *GinHandler) SetupRoutes() *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(context *gin.Context) {
-		context.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-		})
+		h.responder.Success(context, http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	router.POST("/payments", h.createPayment)
@@ -40,19 +39,19 @@ func (h *GinHandler) SetupRoutes() *gin.Engine {
 func (h *GinHandler) createPayment(context *gin.Context) {
 	var request payment.CreateRequest
 	if err := context.ShouldBindJSON(&request); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"error": "invalid payment request"})
+		h.responder.Error(context, http.StatusBadRequest, "invalid payment request", nil)
 		return
 	}
 
 	created, err := h.payments.Create(request)
 	if err != nil {
 		if errors.Is(err, payment.ErrInvalidPayment) {
-			context.JSON(http.StatusBadRequest, gin.H{"error": "invalid payment request"})
+			h.responder.Error(context, http.StatusBadRequest, "invalid payment request", nil)
 			return
 		}
-		context.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create payment"})
+		h.responder.Error(context, http.StatusInternalServerError, "failed to create payment", err)
 		return
 	}
 
-	context.JSON(http.StatusCreated, created)
+	h.responder.Success(context, http.StatusCreated, created)
 }

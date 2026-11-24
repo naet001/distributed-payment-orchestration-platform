@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"log/slog"
+	"os"
 	"strconv"
 
 	"example.com/payment-platform/internal/config"
@@ -37,7 +39,8 @@ func main() {
 
 	paymentRepo := repositories.NewGormPaymentRepository(db)
 	paymentService := payment.NewService(paymentRepo)
-	handler := httpapi.NewGinHandler(paymentService)
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	handler := httpapi.NewGinHandler(paymentService, httpapi.NewResponder(logger))
 	router := handler.SetupRoutes()
 	router.Run(":" + strconv.Itoa(cfg.Port))
 }

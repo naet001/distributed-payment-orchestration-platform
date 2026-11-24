@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +14,7 @@ import (
 
 func TestHealthEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewGinHandler(payment.NewService(&inMemoryPaymentRepository{}))
+	handler := NewGinHandler(payment.NewService(&inMemoryPaymentRepository{}), NewResponder(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	router := handler.SetupRoutes()
 
 	req, _ := http.NewRequest("GET", "/health", nil)

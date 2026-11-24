@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,7 +37,7 @@ func TestCreatePaymentHTTPWithPostgres(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	repository := repositories.NewGormPaymentRepository(databaseForTest{db: tx})
-	router := NewGinHandler(payment.NewService(repository)).SetupRoutes()
+	router := NewGinHandler(payment.NewService(repository), NewResponder(slog.Default())).SetupRoutes()
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
