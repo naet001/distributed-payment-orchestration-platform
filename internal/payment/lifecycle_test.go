@@ -48,6 +48,81 @@ func (r *lifecycleRepository) List() ([]models.Payment, error) {
 	return nil, nil
 }
 
+func TestApplyPaystackResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		result     PaystackResult
+		wantStatus models.PaymentStatus
+		wantError  error
+	}{
+		{
+			name:       "pending result keeps payment pending",
+			result:     PaystackResult{Status: "pending", Reference: "PAY_reference", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusPending,
+		},
+		{
+			name:       "verified success marks payment succeeded",
+			result:     PaystackResult{Status: "success", Reference: "PAY_reference", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusSucceeded,
+		},
+		{
+			name:       "verified failure marks payment failed",
+			result:     PaystackResult{Status: "failed", Reference: "PAY_reference", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusFailed,
+		},
+		{
+			name:       "unknown result leaves payment pending",
+			result:     PaystackResult{Status: "processing_later", Reference: "PAY_reference", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusPending,
+			wantError:  ErrUnknownPaystackStatus,
+		},
+		{
+			name:       "success with mismatched amount leaves payment pending",
+			result:     PaystackResult{Status: "success", Reference: "PAY_reference", Amount: 999, Currency: "USD"},
+			wantStatus: models.PaymentStatusPending,
+			wantError:  ErrPaystackResultMismatch,
+		},
+		{
+			name:       "success with mismatched reference leaves payment pending",
+			result:     PaystackResult{Status: "success", Reference: "PAY_other", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusPending,
+			wantError:  ErrPaystackResultMismatch,
+		},
+		{
+			name:       "success with mismatched currency leaves payment pending",
+			result:     PaystackResult{Status: "success", Reference: "PAY_reference", Amount: 1000, Currency: "EUR"},
+			wantStatus: models.PaymentStatusPending,
+			wantError:  ErrPaystackResultMismatch,
+		},
+		{
+			name:       "repeated success is idempotent",
+			result:     PaystackResult{Status: "success", Reference: "PAY_reference", Amount: 1000, Currency: "USD"},
+			wantStatus: models.PaymentStatusSucceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := &lifecycleRepository{payment: models.Payment{
+				ID: 1, Reference: "PAY_reference", Amount: 1000, Currency: "USD",
+				Status: models.PaymentStatusPending, Provider: "paystack",
+			}}
+			service := NewService(repository)
+			if tt.name == "repeated success is idempotent" {
+				repository.payment.Status = models.PaymentStatusSucceeded
+			}
+
+			_, err := service.ApplyPaystackResult("PAY_reference", tt.result)
+			if !errors.Is(err, tt.wantError) {
+				t.Fatalf("ApplyPaystackResult() error = %v, want %v", err, tt.wantError)
+			}
+			if got := repository.payment.Status; got != tt.wantStatus {
+				t.Fatalf("stored status = %q, want %q", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
 func TestPaymentLifecycle(t *testing.T) {
 	tests := []struct {
 		name        string

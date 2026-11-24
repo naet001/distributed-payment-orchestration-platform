@@ -43,8 +43,22 @@
 
 ## 3.6 Map Paystack responses to internal payment statuses — Not started
 
-- [ ] Map validated Paystack success to internal `succeeded`.
-- [ ] Map provider failure to the agreed internal status.
+**Result policy (defined; implementation still pending):**
+
+- [x] Define behavior for pending, success, failed, and unknown Paystack results.
+
+| Verified Paystack result | Payment action |
+| --- | --- |
+| `pending` | Keep the internal status `pending`; a later verification can report a final result. |
+| `success` | Set `succeeded` only after verification confirms the payment reference, amount, and currency. |
+| `failed` | Set `failed` only when verification confirms the transaction failed. An initialization or network error is not a failed payment. |
+| Unknown status | Do not change the payment. Return a safe verification error for investigation or retry. Never infer `succeeded` or `failed`. |
+| Verification/provider error | Do not change the payment. Return a safe error; allow a later verification attempt. |
+
+A repeated result that matches the current terminal status is safe to accept. A conflicting result after `succeeded`, `failed`, or `cancelled` must not overwrite that terminal status; report the transition conflict for investigation. A cancellation is an internal action and is not inferred from an unknown provider status.
+
+- [ ] Map verified Paystack `success` to internal `succeeded`.
+- [ ] Map verified Paystack `failed` to internal `failed`.
 - [ ] Keep pending or unknown results from being marked successful.
 - [ ] Test known and unknown provider status values.
 

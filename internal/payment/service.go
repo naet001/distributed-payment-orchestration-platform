@@ -16,7 +16,17 @@ var (
 	ErrInvalidPayment       = errors.New("invalid payment")
 	ErrInvalidPaymentStatus = errors.New("invalid payment status")
 	ErrInvalidTransition    = errors.New("invalid payment status transition")
+	ErrUnknownPaystackStatus = errors.New("unknown Paystack status")
+	ErrPaystackResultMismatch = errors.New("Paystack result does not match payment")
 )
+
+// PaystackResult represents a verified Paystack transaction status.
+type PaystackResult struct {
+	Status    string
+	Reference string
+	Amount    int64
+	Currency  string
+}
 
 // CreateRequest contains the fields a caller may set when creating a payment.
 type CreateRequest struct {
@@ -75,6 +85,36 @@ func validPaymentStatus(status models.PaymentStatus) bool {
 func allowedTransition(current, next models.PaymentStatus) bool {
 	return current == models.PaymentStatusPending &&
 		(next == models.PaymentStatusSucceeded || next == models.PaymentStatusFailed || next == models.PaymentStatusCancelled)
+}
+
+// ApplyPaystackResult applies a verified Paystack result to a payment.
+// It only changes the payment status for known, validated results.
+func (s *Service) ApplyPaystackResult(reference string, result PaystackResult) (*models.Payment, error) {
+	payment, err := s.repository.FindByReference(reference)
+	if err != nil {
+		return nil, fmt.Errorf("find payment: %w", err)
+	}
+
+	// Validate the result matches the payment
+	if result.Reference != payment.Reference || result.Amount != payment.Amount || result.Currency != payment.Currency {
+		return nil, ErrPaystackResultMismatch
+	}
+
+	// Map Paystack status to internal status
+	var next models.PaymentStatus
+	switch result.Status {
+	case "pending":
+		next = models.PaymentStatusPending
+	case "success":
+		next = models.PaymentStatusSucceeded
+	case "failed":
+		next = models.PaymentStatusFailed
+	default:
+		return nil, ErrUnknownPaystackStatus
+	}
+
+	// Apply the transition (idempotent for repeated terminal results)
+	return s.TransitionStatus(reference, next)
 }
 
 // Create validates and stores a pending payment.
