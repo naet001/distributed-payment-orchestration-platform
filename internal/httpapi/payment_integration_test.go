@@ -40,7 +40,7 @@ func TestCreatePaymentHTTPWithPostgres(t *testing.T) {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	requestBody := `{"amount":1250,"currency":"USD","provider":"stripe"}`
+	requestBody := `{"amount":1250,"currency":"USD","provider":"stripe","email":"customer@example.com"}`
 	response, err := http.Post(server.URL+"/payments", "application/json", strings.NewReader(requestBody))
 	require.NoError(t, err)
 	defer response.Body.Close()

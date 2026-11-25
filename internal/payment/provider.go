@@ -12,5 +12,5 @@ type TransactionInitializer interface {
 	// InitializeTransaction creates a transaction with the provider and returns
 	// the provider's reference and initialization URL (e.g., authorization URL).
 	// The callbackURL is where the provider will redirect after payment completion.
-	InitializeTransaction(ctx context.Context, reference string, amount int64, currency string, callbackURL string) (providerRef string, authURL *url.URL, err error)
+	InitializeTransaction(ctx context.Context, reference string, amount int64, currency string, email string, callbackURL string) (providerRef string, authURL *url.URL, err error)
 }

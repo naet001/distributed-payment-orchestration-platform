@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"strings"
 	"unicode/utf8"
@@ -36,6 +37,7 @@ type CreateRequest struct {
 	Amount   int64  `json:"amount"`
 	Currency string `json:"currency"`
 	Provider string `json:"provider"`
+	Email    string `json:"email"`
 }
 
 // Service coordinates payment operations.
@@ -128,7 +130,8 @@ func (s *Service) ApplyPaystackResult(reference string, result PaystackResult) (
 func (s *Service) Create(request CreateRequest) (*models.Payment, error) {
 	request.Currency = strings.ToUpper(strings.TrimSpace(request.Currency))
 	request.Provider = strings.TrimSpace(request.Provider)
-	if request.Amount <= 0 || utf8.RuneCountInString(request.Currency) != 3 || request.Provider == "" || utf8.RuneCountInString(request.Provider) > 30 {
+	request.Email = strings.TrimSpace(request.Email)
+	if request.Amount <= 0 || utf8.RuneCountInString(request.Currency) != 3 || request.Provider == "" || utf8.RuneCountInString(request.Provider) > 30 || len(request.Email) > 254 || !validEmail(request.Email) {
 		return nil, ErrInvalidPayment
 	}
 
@@ -143,11 +146,17 @@ func (s *Service) Create(request CreateRequest) (*models.Payment, error) {
 		Currency:  request.Currency,
 		Status:    models.PaymentStatusPending,
 		Provider:  request.Provider,
+		Email:     request.Email,
 	}
 	if err := s.repository.Create(payment); err != nil {
 		return nil, fmt.Errorf("save payment: %w", err)
 	}
 	return payment, nil
+}
+
+func validEmail(value string) bool {
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value
 }
 
 func newReference() (string, error) {
@@ -171,6 +180,9 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 	if payment.Status != models.PaymentStatusPending {
 		return "", nil, fmt.Errorf("cannot initialize transaction for non-pending payment: %w", ErrInvalidPaymentStatus)
 	}
+	if !validEmail(payment.Email) {
+		return "", nil, fmt.Errorf("payment has no valid customer email: %w", ErrInvalidPayment)
+	}
 	if payment.Provider != s.transactionInit.Provider() {
 		return "", nil, fmt.Errorf("%w: payment=%q initializer=%q", ErrProviderMismatch, payment.Provider, s.transactionInit.Provider())
 	}
@@ -181,6 +193,7 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 		reference,
 		payment.Amount,
 		payment.Currency,
+		payment.Email,
 		callbackURL,
 	)
 	if err != nil {

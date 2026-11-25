@@ -73,6 +73,7 @@ func (m *mockRepository) List() ([]models.Payment, error) {
 
 // mockTransactionInitializer implements TransactionInitializer for testing
 type mockTransactionInitializer struct {
+	t           *testing.T
 	providerRef string
 	authURL     *url.URL
 	err         error
@@ -88,10 +89,32 @@ func (m *mockTransactionInitializer) InitializeTransaction(
 	reference string,
 	amount int64,
 	currency string,
+	email string,
 	callbackURL string,
 ) (providerRef string, authURL *url.URL, err error) {
 	m.calls++
+	if m.t != nil {
+		assert.Equal(m.t, "customer@example.com", email)
+	}
 	return m.providerRef, m.authURL, m.err
+}
+
+func TestService_InitializeTransaction_RequiresCustomerEmail(t *testing.T) {
+	repo := newMockRepository()
+	repo.Create(&models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+	})
+	initializer := &mockTransactionInitializer{providerRef: "ACC_123456"}
+	service := NewService(repo, initializer)
+
+	_, _, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
+
+	require.ErrorIs(t, err, ErrInvalidPayment)
+	assert.Zero(t, initializer.calls)
 }
 
 func TestService_InitializeTransaction_Success(t *testing.T) {
@@ -103,12 +126,14 @@ func TestService_InitializeTransaction_Success(t *testing.T) {
 		Currency:  "NGN",
 		Status:    models.PaymentStatusPending,
 		Provider:  "paystack",
+		Email:     "customer@example.com",
 	}
 	repo.Create(payment)
 
 	// Setup mock transaction initializer
 	authURL, _ := url.Parse("https://paystack.com/pay/abc123")
 	initializer := &mockTransactionInitializer{
+		t:           t,
 		providerRef: "ACC_123456",
 		authURL:     authURL,
 		err:         nil,
@@ -144,10 +169,11 @@ func TestService_InitializeTransaction_RepositoryErrorDoesNotReturnCheckout(t *t
 		Currency:  "NGN",
 		Status:    models.PaymentStatusPending,
 		Provider:  "paystack",
+		Email:     "customer@example.com",
 	})
 	repo.updateErr = errors.New("database unavailable")
 	authURL, _ := url.Parse("https://paystack.com/pay/abc123")
-	initializer := &mockTransactionInitializer{providerRef: "ACC_123456", authURL: authURL}
+	initializer := &mockTransactionInitializer{t: t, providerRef: "ACC_123456", authURL: authURL}
 	service := NewService(repo, initializer)
 
 	providerRef, returnedURL, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
@@ -166,9 +192,10 @@ func TestService_InitializeTransaction_RejectsMismatchedProvider(t *testing.T) {
 		Currency:  "NGN",
 		Status:    models.PaymentStatusPending,
 		Provider:  "stripe",
+		Email:     "customer@example.com",
 	}
 	repo.Create(payment)
-	initializer := &mockTransactionInitializer{providerRef: "ACC_123456"}
+	initializer := &mockTransactionInitializer{t: t, providerRef: "ACC_123456"}
 	service := NewService(repo, initializer)
 
 	_, _, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
@@ -209,6 +236,7 @@ func TestService_InitializeTransaction_NonPendingPayment(t *testing.T) {
 		Currency:  "NGN",
 		Status:    models.PaymentStatusSucceeded,
 		Provider:  "paystack",
+		Email:     "customer@example.com",
 	}
 	repo.Create(payment)
 
@@ -240,6 +268,7 @@ func TestService_InitializeTransaction_ProviderError(t *testing.T) {
 		Currency:  "NGN",
 		Status:    models.PaymentStatusPending,
 		Provider:  "paystack",
+		Email:     "customer@example.com",
 	}
 	repo.Create(payment)
 

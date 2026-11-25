@@ -62,12 +62,12 @@ A Go HTTP API that creates payment records and stores them in PostgreSQL. Each n
 
 ## Create a payment
 
-Send a positive integer amount, a three-character currency, and a provider name of up to 30 characters:
+Send a positive integer amount, a three-character currency, a provider name of up to 30 characters, and a valid customer email:
 
 ```bash
 curl -X POST http://localhost:8080/payments \
   -H 'Content-Type: application/json' \
-  -d '{"amount":1250,"currency":"USD","provider":"stripe"}'
+  -d '{"amount":1250,"currency":"USD","provider":"stripe","email":"customer@example.com"}'
 ```
 
 The API returns `201 Created` with the stored payment. It generates a reference in the form `PAY_<32 hexadecimal characters>` and sets the initial status to `pending`. Currency is trimmed and converted to uppercase.

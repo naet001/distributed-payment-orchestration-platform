@@ -18,6 +18,7 @@ type Payment struct {
 	Currency          string        `gorm:"type:char(3);not null"`
 	Status            PaymentStatus `gorm:"type:varchar(20);not null;index"`
 	Provider          string        `gorm:"type:varchar(30);not null"`
+	Email             string        `gorm:"type:varchar(254)" json:"-"`
 	ProviderReference *string       `gorm:"type:varchar(100);uniqueIndex"`
 
 	CreatedAt time.Time

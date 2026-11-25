@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ func TestPaystackClient_InitializeTransaction_Success(t *testing.T) {
 		assert.Equal(t, "PAY_TEST_REF", reqBody.Reference)
 		assert.Equal(t, int64(100000), reqBody.Amount) // 1000.00 in minor units
 		assert.Equal(t, "NGN", reqBody.Currency)
+		assert.Equal(t, "customer@example.com", reqBody.Email)
 		assert.Equal(t, "https://example.com/callback", reqBody.CallbackURL)
 
 		// Return successful response
@@ -67,6 +69,7 @@ func TestPaystackClient_InitializeTransaction_Success(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
@@ -103,6 +106,7 @@ func TestPaystackClient_InitializeTransaction_PaystackError(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
@@ -135,6 +139,7 @@ func TestPaystackClient_InitializeTransaction_MalformedJSON(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
@@ -179,6 +184,7 @@ func TestPaystackClient_InitializeTransaction_MissingAuthorizationURL(t *testing
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
@@ -192,7 +198,7 @@ func TestPaystackClient_InitializeTransaction_NonSuccessStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := paystackResponse{
 			Status:  false,
-			Message: "Insufficient funds",
+			Message: "Invalid key test-secret-key; insufficient funds",
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -213,13 +219,35 @@ func TestPaystackClient_InitializeTransaction_NonSuccessStatus(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
 	// Verify error is returned
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-success status")
-	assert.Contains(t, err.Error(), "Insufficient funds")
+	assert.Contains(t, err.Error(), "Invalid key [REDACTED]; insufficient funds")
+	assert.NotContains(t, err.Error(), "test-secret-key")
+}
+
+func TestPaystackClient_InitializeTransaction_RejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strings.Repeat("x", maxPaystackResponseBytes+1)))
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	_, _, err := client.InitializeTransaction(context.Background(), "PAY_TEST_REF", 100000, "NGN", "customer@example.com", "https://example.com/callback")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response body exceeds limit")
+	assert.NotContains(t, err.Error(), strings.Repeat("x", 64))
 }
 
 func TestPaystackClient_InitializeTransaction_ServerError(t *testing.T) {
@@ -242,6 +270,7 @@ func TestPaystackClient_InitializeTransaction_ServerError(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 
@@ -273,6 +302,7 @@ func TestPaystackClient_InitializeTransaction_ContextTimeout(t *testing.T) {
 		"PAY_TEST_REF",
 		100000,
 		"NGN",
+		"customer@example.com",
 		"https://example.com/callback",
 	)
 

@@ -13,6 +13,8 @@ import (
 )
 
 // PaystackConfig holds configuration for the Paystack client.
+const maxPaystackResponseBytes = 1 << 20
+
 type PaystackConfig struct {
 	SecretKey string
 	Timeout   time.Duration
@@ -40,6 +42,7 @@ type paystackRequest struct {
 	Reference   string `json:"reference"`
 	Amount      int64  `json:"amount"`
 	Currency    string `json:"currency"`
+	Email       string `json:"email"`
 	CallbackURL string `json:"callback_url"`
 }
 
@@ -65,6 +68,7 @@ func (c *PaystackClient) InitializeTransaction(
 	reference string,
 	amount int64,
 	currency string,
+	email string,
 	callbackURL string,
 ) (providerRef string, authURL *url.URL, err error) {
 	// Build request body
@@ -72,6 +76,7 @@ func (c *PaystackClient) InitializeTransaction(
 		Reference:   reference,
 		Amount:      amount,
 		Currency:    currency,
+		Email:       email,
 		CallbackURL: callbackURL,
 	}
 
@@ -103,10 +108,13 @@ func (c *PaystackClient) InitializeTransaction(
 	}
 	defer resp.Body.Close()
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read at most one byte beyond the limit to detect oversized responses.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPaystackResponseBytes+1))
 	if err != nil {
 		return "", nil, fmt.Errorf("read response body: %w", err)
+	}
+	if len(body) > maxPaystackResponseBytes {
+		return "", nil, fmt.Errorf("paystack response body exceeds limit")
 	}
 
 	// Handle non-success responses
@@ -123,7 +131,7 @@ func (c *PaystackClient) InitializeTransaction(
 
 	// Validate response structure
 	if !paystackResp.Status {
-		return "", nil, fmt.Errorf("paystack returned non-success status: %s", paystackResp.Message)
+		return "", nil, fmt.Errorf("paystack returned non-success status: %s", sanitizeProviderMessage(paystackResp.Message, c.config.SecretKey))
 	}
 
 	if paystackResp.Data.AuthorizationURL == "" || paystackResp.Data.AccessCode == "" || paystackResp.Data.Reference != reference {
@@ -142,6 +150,13 @@ func (c *PaystackClient) InitializeTransaction(
 
 // sanitizeErrorMessage removes sensitive information from error messages.
 // It ensures secret keys and authorization headers are never exposed.
+func sanitizeProviderMessage(message, secretKey string) string {
+	if secretKey == "" {
+		return message
+	}
+	return strings.ReplaceAll(message, secretKey, "[REDACTED]")
+}
+
 func sanitizeErrorMessage(body []byte, secretKey string) string {
 	// Extract only a provider message. Never return a raw response body.
 	var resp paystackResponse
@@ -149,9 +164,5 @@ func sanitizeErrorMessage(body []byte, secretKey string) string {
 		return "unexpected response format"
 	}
 
-	message := resp.Message
-	if secretKey != "" {
-		message = strings.ReplaceAll(message, secretKey, "[REDACTED]")
-	}
-	return message
+	return sanitizeProviderMessage(resp.Message, secretKey)
 }
