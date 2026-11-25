@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"example.com/payment-platform/internal/models"
-	"example.com/payment-platform/internal/payment"
 	"example.com/payment-platform/internal/repositories"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -37,7 +36,7 @@ func TestCreatePaymentHTTPWithPostgres(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	repository := repositories.NewGormPaymentRepository(databaseForTest{db: tx})
-	router := NewGinHandler(payment.NewService(repository), NewResponder(slog.Default())).SetupRoutes()
+	router := NewGinHandler(newTestPaymentService(repository), NewResponder(slog.Default())).SetupRoutes()
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 

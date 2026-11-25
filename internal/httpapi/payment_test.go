@@ -2,17 +2,20 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"example.com/payment-platform/internal/models"
 	"example.com/payment-platform/internal/payment"
+	"example.com/payment-platform/internal/repositories"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -24,6 +27,17 @@ func newTestLogger() *slog.Logger {
 type inMemoryPaymentRepository struct {
 	payments  []models.Payment
 	createErr error
+}
+
+type unusedTransactionInitializer struct{}
+
+func (unusedTransactionInitializer) Provider() string { return "paystack" }
+func (unusedTransactionInitializer) InitializeTransaction(context.Context, string, int64, string, string) (string, *url.URL, error) {
+	return "", nil, errors.New("unexpected transaction initialization")
+}
+
+func newTestPaymentService(repository repositories.PaymentRepository) *payment.Service {
+	return payment.NewService(repository, unusedTransactionInitializer{})
 }
 
 func (r *inMemoryPaymentRepository) Create(p *models.Payment) error {
@@ -53,7 +67,7 @@ func (*inMemoryPaymentRepository) List() ([]models.Payment, error) {
 func TestCreatePayment(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repository := &inMemoryPaymentRepository{}
-	router := NewGinHandler(payment.NewService(repository), NewResponder(newTestLogger())).SetupRoutes()
+	router := NewGinHandler(newTestPaymentService(repository), NewResponder(newTestLogger())).SetupRoutes()
 
 	request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(`{"amount":1250,"currency":"USD","provider":"stripe"}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -79,7 +93,7 @@ func TestCreatePaymentHidesAndLogsSaveError(t *testing.T) {
 	repository := &inMemoryPaymentRepository{createErr: errors.New(underlyingError)}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	router := NewGinHandler(payment.NewService(repository), NewResponder(logger)).SetupRoutes()
+	router := NewGinHandler(newTestPaymentService(repository), NewResponder(logger)).SetupRoutes()
 
 	request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(`{"amount":1250,"currency":"USD","provider":"stripe"}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -103,7 +117,7 @@ func TestCreatePaymentRejectsInvalidRequest(t *testing.T) {
 	} {
 		t.Run(body, func(t *testing.T) {
 			repository := &inMemoryPaymentRepository{}
-			router := NewGinHandler(payment.NewService(repository), NewResponder(newTestLogger())).SetupRoutes()
+			router := NewGinHandler(newTestPaymentService(repository), NewResponder(newTestLogger())).SetupRoutes()
 
 			request := httptest.NewRequest(http.MethodPost, "/payments", strings.NewReader(body))
 			request.Header.Set("Content-Type", "application/json")

@@ -107,7 +107,7 @@ func TestApplyPaystackResult(t *testing.T) {
 				ID: 1, Reference: "PAY_reference", Amount: 1000, Currency: "USD",
 				Status: models.PaymentStatusPending, Provider: "paystack",
 			}}
-			service := NewService(repository)
+			service := NewService(repository, &mockTransactionInitializer{})
 			if tt.name == "repeated success is idempotent" {
 				repository.payment.Status = models.PaymentStatusSucceeded
 			}
@@ -145,7 +145,7 @@ func TestPaymentLifecycle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repository := &lifecycleRepository{}
-			service := NewService(repository)
+			service := NewService(repository, &mockTransactionInitializer{})
 			created, err := service.Create(CreateRequest{Amount: 1000, Currency: "USD", Provider: "paystack"})
 			if err != nil {
 				t.Fatalf("Create() error = %v, want nil", err)

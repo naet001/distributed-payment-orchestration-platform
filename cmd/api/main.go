@@ -43,7 +43,7 @@ func main() {
 		SecretKey: cfg.PaystackSecretKey,
 		Timeout:   time.Duration(cfg.PaystackTimeout) * time.Second,
 	})
-	paymentService := payment.NewServiceWithInitializer(paymentRepo, paystackClient)
+	paymentService := payment.NewService(paymentRepo, paystackClient)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	handler := httpapi.NewGinHandler(paymentService, httpapi.NewResponder(logger))
 	router := handler.SetupRoutes()

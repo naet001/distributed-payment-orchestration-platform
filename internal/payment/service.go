@@ -44,13 +44,8 @@ type Service struct {
 	transactionInit TransactionInitializer
 }
 
-// NewService creates a payment service.
-func NewService(repository repositories.PaymentRepository) *Service {
-	return &Service{repository: repository}
-}
-
-// NewServiceWithInitializer creates a payment service with a transaction initializer.
-func NewServiceWithInitializer(repository repositories.PaymentRepository, initializer TransactionInitializer) *Service {
+// NewService creates a payment service with a transaction initializer.
+func NewService(repository repositories.PaymentRepository, initializer TransactionInitializer) *Service {
 	return &Service{
 		repository:      repository,
 		transactionInit: initializer,
@@ -163,18 +158,10 @@ func newReference() (string, error) {
 	return "PAY_" + hex.EncodeToString(value[:]), nil
 }
 
-// ErrNoTransactionInitializer is returned when trying to initialize a transaction
-// without a configured initializer.
-var ErrNoTransactionInitializer = errors.New("no transaction initializer configured")
-
 // InitializeTransaction initializes a transaction with the configured provider.
 // It returns the provider's reference and authorization URL.
 // The payment must already exist with a pending status.
 func (s *Service) InitializeTransaction(ctx context.Context, reference string, callbackURL string) (providerRef string, authURL *url.URL, err error) {
-	if s.transactionInit == nil {
-		return "", nil, ErrNoTransactionInitializer
-	}
-
 	// Get the payment to validate it exists and get amount/currency
 	payment, err := s.repository.FindByReference(reference)
 	if err != nil {

@@ -115,7 +115,7 @@ func TestService_InitializeTransaction_Success(t *testing.T) {
 	}
 
 	// Create service with both repository and initializer
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	// Call InitializeTransaction
 	ctx := context.Background()
@@ -148,7 +148,7 @@ func TestService_InitializeTransaction_RepositoryErrorDoesNotReturnCheckout(t *t
 	repo.updateErr = errors.New("database unavailable")
 	authURL, _ := url.Parse("https://paystack.com/pay/abc123")
 	initializer := &mockTransactionInitializer{providerRef: "ACC_123456", authURL: authURL}
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	providerRef, returnedURL, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
 
@@ -169,32 +169,12 @@ func TestService_InitializeTransaction_RejectsMismatchedProvider(t *testing.T) {
 	}
 	repo.Create(payment)
 	initializer := &mockTransactionInitializer{providerRef: "ACC_123456"}
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	_, _, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
 
 	require.ErrorIs(t, err, ErrProviderMismatch)
 	assert.Zero(t, initializer.calls, "must not initialize a payment with a different provider")
-}
-
-func TestService_InitializeTransaction_NoInitializer(t *testing.T) {
-	// Setup mock repository
-	repo := newMockRepository()
-
-	// Create service without initializer
-	service := NewService(repo)
-
-	// Call InitializeTransaction
-	ctx := context.Background()
-	_, _, err := service.InitializeTransaction(
-		ctx,
-		"PAY_TEST_REF",
-		"https://example.com/callback",
-	)
-
-	// Verify error
-	require.Error(t, err)
-	assert.Equal(t, ErrNoTransactionInitializer, err)
 }
 
 func TestService_InitializeTransaction_PaymentNotFound(t *testing.T) {
@@ -205,7 +185,7 @@ func TestService_InitializeTransaction_PaymentNotFound(t *testing.T) {
 	initializer := &mockTransactionInitializer{}
 
 	// Create service
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	// Call InitializeTransaction with non-existent reference
 	ctx := context.Background()
@@ -236,7 +216,7 @@ func TestService_InitializeTransaction_NonPendingPayment(t *testing.T) {
 	initializer := &mockTransactionInitializer{}
 
 	// Create service
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	// Call InitializeTransaction
 	ctx := context.Background()
@@ -269,7 +249,7 @@ func TestService_InitializeTransaction_ProviderError(t *testing.T) {
 	}
 
 	// Create service
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	// Call InitializeTransaction
 	ctx := context.Background()
@@ -285,11 +265,11 @@ func TestService_InitializeTransaction_ProviderError(t *testing.T) {
 	assert.Contains(t, err.Error(), "provider error")
 }
 
-func TestNewServiceWithInitializer(t *testing.T) {
+func TestNewService(t *testing.T) {
 	repo := newMockRepository()
 	initializer := &mockTransactionInitializer{}
 
-	service := NewServiceWithInitializer(repo, initializer)
+	service := NewService(repo, initializer)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, repo, service.repository)
