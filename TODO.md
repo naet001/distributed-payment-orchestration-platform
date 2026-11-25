@@ -20,13 +20,13 @@
 - [x] Return the created payment.
 - [x] Test valid and invalid requests and persistence behavior.
 
-## 3.3 Implement Paystack transaction initialization — Not started
+## 3.3 Implement Paystack transaction initialization — In progress
 
-- [ ] Define a provider interface for transaction initialization.
-- [ ] Add Paystack configuration, including a secret key and request timeout.
-- [ ] Send the payment reference, amount, currency, and callback URL to Paystack.
-- [ ] Handle provider errors and malformed responses without leaking secrets.
-- [ ] Test the provider client with a controlled HTTP server.
+- [x] Define a provider interface for transaction initialization.
+- [x] Add Paystack configuration, including a secret key and request timeout.
+- [x] Send the payment reference, amount, currency, and callback URL to Paystack.
+- [ ] Handle provider errors and malformed responses without leaking secrets. HTTP errors and malformed responses are handled safely; sanitize the provider message returned for an HTTP-200 response with `status: false`.
+- [x] Test the provider client with a controlled HTTP server.
 
 ## 3.4 Generate and return hosted checkout URL — Not started
 
@@ -41,9 +41,9 @@
 - [ ] Persist the verified result through the service and repository.
 - [ ] Define and test behavior for unknown references and provider failures.
 
-## 3.6 Map Paystack responses to internal payment statuses — Not started
+## 3.6 Map Paystack responses to internal payment statuses — Done
 
-**Result policy (defined; implementation still pending):**
+**Result policy (defined and implemented for verified results):**
 
 - [x] Define behavior for pending, success, failed, and unknown Paystack results.
 
