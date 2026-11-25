@@ -14,7 +14,9 @@ import (
 
 // mockRepository implements repositories.PaymentRepository for testing
 type mockRepository struct {
-	payments map[string]*models.Payment
+	payments    map[string]*models.Payment
+	updateErr   error
+	updateCalls int
 }
 
 func newMockRepository() *mockRepository {
@@ -42,11 +44,17 @@ func (m *mockRepository) FindByReference(reference string) (*models.Payment, err
 	if !ok {
 		return nil, errors.New("payment not found")
 	}
-	return payment, nil
+	copy := *payment
+	return &copy, nil
 }
 
 func (m *mockRepository) Update(payment *models.Payment) error {
-	m.payments[payment.Reference] = payment
+	m.updateCalls++
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	copy := *payment
+	m.payments[payment.Reference] = &copy
 	return nil
 }
 
@@ -121,6 +129,33 @@ func TestService_InitializeTransaction_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ACC_123456", providerRef)
 	assert.Equal(t, authURL, returnedURL)
+	stored, err := repo.FindByReference("PAY_TEST_REF")
+	require.NoError(t, err)
+	require.NotNil(t, stored.ProviderReference)
+	assert.Equal(t, "ACC_123456", *stored.ProviderReference)
+	assert.Equal(t, 1, repo.updateCalls)
+}
+
+func TestService_InitializeTransaction_RepositoryErrorDoesNotReturnCheckout(t *testing.T) {
+	repo := newMockRepository()
+	repo.Create(&models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+	})
+	repo.updateErr = errors.New("database unavailable")
+	authURL, _ := url.Parse("https://paystack.com/pay/abc123")
+	initializer := &mockTransactionInitializer{providerRef: "ACC_123456", authURL: authURL}
+	service := NewServiceWithInitializer(repo, initializer)
+
+	providerRef, returnedURL, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "save provider reference")
+	assert.Empty(t, providerRef)
+	assert.Nil(t, returnedURL)
 }
 
 func TestService_InitializeTransaction_RejectsMismatchedProvider(t *testing.T) {

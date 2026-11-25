@@ -200,5 +200,10 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 		return "", nil, fmt.Errorf("initialize transaction: %w", err)
 	}
 
+	payment.ProviderReference = &providerRef
+	if err := s.repository.Update(payment); err != nil {
+		return "", nil, fmt.Errorf("save provider reference: %w", err)
+	}
+
 	return providerRef, authURL, nil
 }
