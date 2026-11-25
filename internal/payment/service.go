@@ -1,10 +1,12 @@
 package payment
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -13,10 +15,10 @@ import (
 )
 
 var (
-	ErrInvalidPayment       = errors.New("invalid payment")
-	ErrInvalidPaymentStatus = errors.New("invalid payment status")
-	ErrInvalidTransition    = errors.New("invalid payment status transition")
-	ErrUnknownPaystackStatus = errors.New("unknown Paystack status")
+	ErrInvalidPayment         = errors.New("invalid payment")
+	ErrInvalidPaymentStatus   = errors.New("invalid payment status")
+	ErrInvalidTransition      = errors.New("invalid payment status transition")
+	ErrUnknownPaystackStatus  = errors.New("unknown Paystack status")
 	ErrPaystackResultMismatch = errors.New("Paystack result does not match payment")
 )
 
@@ -37,12 +39,21 @@ type CreateRequest struct {
 
 // Service coordinates payment operations.
 type Service struct {
-	repository repositories.PaymentRepository
+	repository      repositories.PaymentRepository
+	transactionInit TransactionInitializer
 }
 
 // NewService creates a payment service.
 func NewService(repository repositories.PaymentRepository) *Service {
 	return &Service{repository: repository}
+}
+
+// NewServiceWithInitializer creates a payment service with a transaction initializer.
+func NewServiceWithInitializer(repository repositories.PaymentRepository, initializer TransactionInitializer) *Service {
+	return &Service{
+		repository:      repository,
+		transactionInit: initializer,
+	}
 }
 
 // TransitionStatus applies a valid lifecycle transition to a payment.
@@ -149,4 +160,41 @@ func newReference() (string, error) {
 		return "", err
 	}
 	return "PAY_" + hex.EncodeToString(value[:]), nil
+}
+
+// ErrNoTransactionInitializer is returned when trying to initialize a transaction
+// without a configured initializer.
+var ErrNoTransactionInitializer = errors.New("no transaction initializer configured")
+
+// InitializeTransaction initializes a transaction with the configured provider.
+// It returns the provider's reference and authorization URL.
+// The payment must already exist with a pending status.
+func (s *Service) InitializeTransaction(ctx context.Context, reference string, callbackURL string) (providerRef string, authURL *url.URL, err error) {
+	if s.transactionInit == nil {
+		return "", nil, ErrNoTransactionInitializer
+	}
+
+	// Get the payment to validate it exists and get amount/currency
+	payment, err := s.repository.FindByReference(reference)
+	if err != nil {
+		return "", nil, fmt.Errorf("find payment: %w", err)
+	}
+
+	if payment.Status != models.PaymentStatusPending {
+		return "", nil, fmt.Errorf("cannot initialize transaction for non-pending payment: %w", ErrInvalidPaymentStatus)
+	}
+
+	// Initialize transaction with provider
+	providerRef, authURL, err = s.transactionInit.InitializeTransaction(
+		ctx,
+		reference,
+		payment.Amount,
+		payment.Currency,
+		callbackURL,
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("initialize transaction: %w", err)
+	}
+
+	return providerRef, authURL, nil
 }

@@ -19,6 +19,9 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	DBSSLMode  string
+	// Paystack configuration
+	PaystackSecretKey string
+	PaystackTimeout   int // in seconds, default 30
 }
 
 // Load loads the configuration from environment variables.
@@ -64,14 +67,31 @@ func Load() (*Config, error) {
 		return nil, os.ErrInvalid
 	}
 
+	// Load Paystack configuration
+	paystackTimeoutStr := os.Getenv("PAYSTACK_TIMEOUT")
+	if paystackTimeoutStr == "" {
+		paystackTimeoutStr = "30"
+	}
+
+	paystackTimeout, err := strconv.Atoi(paystackTimeoutStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if paystackTimeout < 1 || paystackTimeout > 300 {
+		return nil, os.ErrInvalid
+	}
+
 	cfg := &Config{
-		Port:      port,
-		DBHost:    dbHost,
-		DBPort:    dbPort,
-		DBUser:    os.Getenv("DB_USER"),
-		DBPassword: os.Getenv("DB_PASSWORD"),
-		DBName:    os.Getenv("DB_NAME"),
-		DBSSLMode: os.Getenv("DB_SSL_MODE"),
+		Port:              port,
+		DBHost:            dbHost,
+		DBPort:            dbPort,
+		DBUser:            os.Getenv("DB_USER"),
+		DBPassword:        os.Getenv("DB_PASSWORD"),
+		DBName:            os.Getenv("DB_NAME"),
+		DBSSLMode:         os.Getenv("DB_SSL_MODE"),
+		PaystackSecretKey: os.Getenv("PAYSTACK_SECRET_KEY"),
+		PaystackTimeout:   paystackTimeout,
 	}
 
 	return cfg, nil
