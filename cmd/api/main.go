@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"time"
 
 	"example.com/payment-platform/internal/config"
 	"example.com/payment-platform/internal/database"
@@ -38,7 +39,11 @@ func main() {
 	log.Println("database migration completed")
 
 	paymentRepo := repositories.NewGormPaymentRepository(db)
-	paymentService := payment.NewService(paymentRepo)
+	paystackClient := payment.NewPaystackClient(payment.PaystackConfig{
+		SecretKey: cfg.PaystackSecretKey,
+		Timeout:   time.Duration(cfg.PaystackTimeout) * time.Second,
+	})
+	paymentService := payment.NewService(paymentRepo, paystackClient)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	handler := httpapi.NewGinHandler(paymentService, httpapi.NewResponder(logger))
 	router := handler.SetupRoutes()

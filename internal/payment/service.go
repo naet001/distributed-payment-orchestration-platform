@@ -1,10 +1,13 @@
 package payment
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/mail"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -13,10 +16,11 @@ import (
 )
 
 var (
-	ErrInvalidPayment       = errors.New("invalid payment")
-	ErrInvalidPaymentStatus = errors.New("invalid payment status")
-	ErrInvalidTransition    = errors.New("invalid payment status transition")
-	ErrUnknownPaystackStatus = errors.New("unknown Paystack status")
+	ErrInvalidPayment         = errors.New("invalid payment")
+	ErrInvalidPaymentStatus   = errors.New("invalid payment status")
+	ErrInvalidTransition      = errors.New("invalid payment status transition")
+	ErrProviderMismatch       = errors.New("payment provider does not match configured initializer")
+	ErrUnknownPaystackStatus  = errors.New("unknown Paystack status")
 	ErrPaystackResultMismatch = errors.New("Paystack result does not match payment")
 )
 
@@ -33,16 +37,21 @@ type CreateRequest struct {
 	Amount   int64  `json:"amount"`
 	Currency string `json:"currency"`
 	Provider string `json:"provider"`
+	Email    string `json:"email"`
 }
 
 // Service coordinates payment operations.
 type Service struct {
-	repository repositories.PaymentRepository
+	repository      repositories.PaymentRepository
+	transactionInit TransactionInitializer
 }
 
-// NewService creates a payment service.
-func NewService(repository repositories.PaymentRepository) *Service {
-	return &Service{repository: repository}
+// NewService creates a payment service with a transaction initializer.
+func NewService(repository repositories.PaymentRepository, initializer TransactionInitializer) *Service {
+	return &Service{
+		repository:      repository,
+		transactionInit: initializer,
+	}
 }
 
 // TransitionStatus applies a valid lifecycle transition to a payment.
@@ -121,7 +130,8 @@ func (s *Service) ApplyPaystackResult(reference string, result PaystackResult) (
 func (s *Service) Create(request CreateRequest) (*models.Payment, error) {
 	request.Currency = strings.ToUpper(strings.TrimSpace(request.Currency))
 	request.Provider = strings.TrimSpace(request.Provider)
-	if request.Amount <= 0 || utf8.RuneCountInString(request.Currency) != 3 || request.Provider == "" || utf8.RuneCountInString(request.Provider) > 30 {
+	request.Email = strings.TrimSpace(request.Email)
+	if request.Amount <= 0 || utf8.RuneCountInString(request.Currency) != 3 || request.Provider == "" || utf8.RuneCountInString(request.Provider) > 30 || len(request.Email) > 254 || !validEmail(request.Email) {
 		return nil, ErrInvalidPayment
 	}
 
@@ -136,11 +146,17 @@ func (s *Service) Create(request CreateRequest) (*models.Payment, error) {
 		Currency:  request.Currency,
 		Status:    models.PaymentStatusPending,
 		Provider:  request.Provider,
+		Email:     request.Email,
 	}
 	if err := s.repository.Create(payment); err != nil {
 		return nil, fmt.Errorf("save payment: %w", err)
 	}
 	return payment, nil
+}
+
+func validEmail(value string) bool {
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value
 }
 
 func newReference() (string, error) {
@@ -149,4 +165,45 @@ func newReference() (string, error) {
 		return "", err
 	}
 	return "PAY_" + hex.EncodeToString(value[:]), nil
+}
+
+// InitializeTransaction initializes a transaction with the configured provider.
+// It returns the provider's reference and authorization URL.
+// The payment must already exist with a pending status.
+func (s *Service) InitializeTransaction(ctx context.Context, reference string, callbackURL string) (providerRef string, authURL *url.URL, err error) {
+	// Get the payment to validate it exists and get amount/currency
+	payment, err := s.repository.FindByReference(reference)
+	if err != nil {
+		return "", nil, fmt.Errorf("find payment: %w", err)
+	}
+
+	if payment.Status != models.PaymentStatusPending {
+		return "", nil, fmt.Errorf("cannot initialize transaction for non-pending payment: %w", ErrInvalidPaymentStatus)
+	}
+	if !validEmail(payment.Email) {
+		return "", nil, fmt.Errorf("payment has no valid customer email: %w", ErrInvalidPayment)
+	}
+	if payment.Provider != s.transactionInit.Provider() {
+		return "", nil, fmt.Errorf("%w: payment=%q initializer=%q", ErrProviderMismatch, payment.Provider, s.transactionInit.Provider())
+	}
+
+	// Initialize transaction with provider
+	providerRef, authURL, err = s.transactionInit.InitializeTransaction(
+		ctx,
+		reference,
+		payment.Amount,
+		payment.Currency,
+		payment.Email,
+		callbackURL,
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("initialize transaction: %w", err)
+	}
+
+	payment.ProviderReference = &providerRef
+	if err := s.repository.Update(payment); err != nil {
+		return "", nil, fmt.Errorf("save provider reference: %w", err)
+	}
+
+	return providerRef, authURL, nil
 }
