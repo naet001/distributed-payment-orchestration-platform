@@ -7,6 +7,8 @@ import (
 
 // TransactionInitializer defines the interface for payment provider transaction initialization.
 type TransactionInitializer interface {
+	Provider() string
+
 	// InitializeTransaction creates a transaction with the provider and returns
 	// the provider's reference and initialization URL (e.g., authorization URL).
 	// The callbackURL is where the provider will redirect after payment completion.

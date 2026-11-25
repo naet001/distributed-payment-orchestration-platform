@@ -54,6 +54,10 @@ type paystackResponse struct {
 	} `json:"data"`
 }
 
+func (c *PaystackClient) Provider() string {
+	return "paystack"
+}
+
 // InitializeTransaction creates a transaction with Paystack and returns the provider's
 // reference and authorization URL.
 func (c *PaystackClient) InitializeTransaction(

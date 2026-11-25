@@ -68,6 +68,11 @@ type mockTransactionInitializer struct {
 	providerRef string
 	authURL     *url.URL
 	err         error
+	calls       int
+}
+
+func (m *mockTransactionInitializer) Provider() string {
+	return "paystack"
 }
 
 func (m *mockTransactionInitializer) InitializeTransaction(
@@ -77,6 +82,7 @@ func (m *mockTransactionInitializer) InitializeTransaction(
 	currency string,
 	callbackURL string,
 ) (providerRef string, authURL *url.URL, err error) {
+	m.calls++
 	return m.providerRef, m.authURL, m.err
 }
 
@@ -115,6 +121,25 @@ func TestService_InitializeTransaction_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ACC_123456", providerRef)
 	assert.Equal(t, authURL, returnedURL)
+}
+
+func TestService_InitializeTransaction_RejectsMismatchedProvider(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "stripe",
+	}
+	repo.Create(payment)
+	initializer := &mockTransactionInitializer{providerRef: "ACC_123456"}
+	service := NewServiceWithInitializer(repo, initializer)
+
+	_, _, err := service.InitializeTransaction(context.Background(), "PAY_TEST_REF", "https://example.com/callback")
+
+	require.ErrorIs(t, err, ErrProviderMismatch)
+	assert.Zero(t, initializer.calls, "must not initialize a payment with a different provider")
 }
 
 func TestService_InitializeTransaction_NoInitializer(t *testing.T) {

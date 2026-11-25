@@ -18,6 +18,7 @@ var (
 	ErrInvalidPayment         = errors.New("invalid payment")
 	ErrInvalidPaymentStatus   = errors.New("invalid payment status")
 	ErrInvalidTransition      = errors.New("invalid payment status transition")
+	ErrProviderMismatch       = errors.New("payment provider does not match configured initializer")
 	ErrUnknownPaystackStatus  = errors.New("unknown Paystack status")
 	ErrPaystackResultMismatch = errors.New("Paystack result does not match payment")
 )
@@ -182,6 +183,9 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 
 	if payment.Status != models.PaymentStatusPending {
 		return "", nil, fmt.Errorf("cannot initialize transaction for non-pending payment: %w", ErrInvalidPaymentStatus)
+	}
+	if payment.Provider != s.transactionInit.Provider() {
+		return "", nil, fmt.Errorf("%w: payment=%q initializer=%q", ErrProviderMismatch, payment.Provider, s.transactionInit.Provider())
 	}
 
 	// Initialize transaction with provider
