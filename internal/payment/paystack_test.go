@@ -379,3 +379,323 @@ func TestPaystackClient_ImplementsInterface(t *testing.T) {
 	// This should compile if the interface is properly implemented
 	var _ TransactionInitializer = client
 }
+
+func TestPaystackClient_VerifyTransaction_Success(t *testing.T) {
+	// Create a test server that returns a successful verification response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify request method and path
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/transaction/verify/PAY_TEST_REF", r.URL.Path)
+
+		// Verify headers
+		assert.Equal(t, "Bearer test-secret-key", r.Header.Get("Authorization"))
+
+		// Return successful verification response
+		response := paystackVerifyResponse{
+			Status: true,
+			Data: struct {
+				ID             int    `json:"id"`
+				Domain         string `json:"domain"`
+				Status         string `json:"status"`
+				Reference      string `json:"reference"`
+				Amount         int64  `json:"amount"`
+				Currency       string `json:"currency"`
+				GatewayResponse string `json:"gateway_response"`
+				PaidAt         string `json:"paid_at"`
+				CreatedAt      string `json:"created_at"`
+				Channel        string `json:"channel"`
+			}{
+				ID:              12345,
+				Domain:          "test",
+				Status:          "success",
+				Reference:       "PAY_TEST_REF",
+				Amount:          100000,
+				Currency:        "NGN",
+				GatewayResponse: "Successful",
+				PaidAt:          "2024-01-15T10:30:00.000Z",
+				CreatedAt:       "2024-01-15T10:25:00.000Z",
+				Channel:         "card",
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Create client with test configuration
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	// Call VerifyTransaction
+	ctx := context.Background()
+	status, ref, amount, currency, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	// Verify results
+	require.NoError(t, err)
+	assert.Equal(t, "success", status)
+	assert.Equal(t, "PAY_TEST_REF", ref)
+	assert.Equal(t, int64(100000), amount)
+	assert.Equal(t, "NGN", currency)
+}
+
+func TestPaystackClient_VerifyTransaction_Pending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := paystackVerifyResponse{
+			Status: true,
+			Data: struct {
+				ID             int    `json:"id"`
+				Domain         string `json:"domain"`
+				Status         string `json:"status"`
+				Reference      string `json:"reference"`
+				Amount         int64  `json:"amount"`
+				Currency       string `json:"currency"`
+				GatewayResponse string `json:"gateway_response"`
+				PaidAt         string `json:"paid_at"`
+				CreatedAt      string `json:"created_at"`
+				Channel        string `json:"channel"`
+			}{
+				Status:    "pending",
+				Reference: "PAY_TEST_REF",
+				Amount:    100000,
+				Currency:  "NGN",
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	status, ref, amount, currency, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.NoError(t, err)
+	assert.Equal(t, "pending", status)
+	assert.Equal(t, "PAY_TEST_REF", ref)
+	assert.Equal(t, int64(100000), amount)
+	assert.Equal(t, "NGN", currency)
+}
+
+func TestPaystackClient_VerifyTransaction_Failed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := paystackVerifyResponse{
+			Status: true,
+			Data: struct {
+				ID             int    `json:"id"`
+				Domain         string `json:"domain"`
+				Status         string `json:"status"`
+				Reference      string `json:"reference"`
+				Amount         int64  `json:"amount"`
+				Currency       string `json:"currency"`
+				GatewayResponse string `json:"gateway_response"`
+				PaidAt         string `json:"paid_at"`
+				CreatedAt      string `json:"created_at"`
+				Channel        string `json:"channel"`
+			}{
+				Status:         "failed",
+				Reference:      "PAY_TEST_REF",
+				Amount:         100000,
+				Currency:       "NGN",
+				GatewayResponse: "Insufficient funds",
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	status, ref, amount, currency, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.NoError(t, err)
+	assert.Equal(t, "failed", status)
+	assert.Equal(t, "PAY_TEST_REF", ref)
+	assert.Equal(t, int64(100000), amount)
+	assert.Equal(t, "NGN", currency)
+}
+
+func TestPaystackClient_VerifyTransaction_PaystackError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := paystackVerifyResponse{
+			Status:  false,
+			Message: "Invalid API key",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "paystack API error")
+	assert.Contains(t, err.Error(), "status=401")
+	assert.NotContains(t, err.Error(), "test-secret-key")
+}
+
+func TestPaystackClient_VerifyTransaction_NonSuccessStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := paystackVerifyResponse{
+			Status:  false,
+			Message: "Invalid key test-secret-key; transaction not found",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-success status")
+	assert.Contains(t, err.Error(), "Invalid key [REDACTED]; transaction not found")
+	assert.NotContains(t, err.Error(), "test-secret-key")
+}
+
+func TestPaystackClient_VerifyTransaction_MissingData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := paystackVerifyResponse{
+			Status: true,
+			Data: struct {
+				ID             int    `json:"id"`
+				Domain         string `json:"domain"`
+				Status         string `json:"status"`
+				Reference      string `json:"reference"`
+				Amount         int64  `json:"amount"`
+				Currency       string `json:"currency"`
+				GatewayResponse string `json:"gateway_response"`
+				PaidAt         string `json:"paid_at"`
+				CreatedAt      string `json:"created_at"`
+				Channel        string `json:"channel"`
+			}{
+				Status:   "", // Missing
+				Reference: "PAY_TEST_REF",
+				Amount:   100000,
+				Currency: "NGN",
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing transaction data")
+}
+
+func TestPaystackClient_VerifyTransaction_MalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not valid json"))
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse response")
+	assert.NotContains(t, err.Error(), "test-secret-key")
+}
+
+func TestPaystackClient_VerifyTransaction_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "paystack API error")
+	assert.Contains(t, err.Error(), "status=500")
+	assert.NotContains(t, err.Error(), "test-secret-key")
+}
+
+func TestPaystackClient_VerifyTransaction_ContextTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   1 * time.Millisecond,
+		BaseURL:   server.URL,
+	})
+
+	ctx := context.Background()
+	_, _, _, _, err := client.VerifyTransaction(ctx, "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "execute request")
+}
+
+func TestPaystackClient_ImplementsTransactionVerifier(t *testing.T) {
+	client := NewPaystackClient(PaystackConfig{
+		SecretKey: "test-secret-key",
+		Timeout:   5 * time.Second,
+	})
+
+	var _ TransactionVerifier = client
+}

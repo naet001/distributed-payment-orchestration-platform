@@ -36,7 +36,7 @@ func TestCreatePaymentHTTPWithPostgres(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	repository := repositories.NewGormPaymentRepository(databaseForTest{db: tx})
-	router := NewGinHandler(newTestPaymentService(repository), NewResponder(slog.Default())).SetupRoutes()
+	router := NewGinHandler(newTestPaymentService(repository, unusedTransactionInitializer{}, nil), NewResponder(slog.Default())).SetupRoutes()
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 

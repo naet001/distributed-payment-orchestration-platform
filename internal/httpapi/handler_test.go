@@ -13,7 +13,7 @@ import (
 
 func TestHealthEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewGinHandler(newTestPaymentService(&inMemoryPaymentRepository{}), NewResponder(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	handler := NewGinHandler(newTestPaymentService(&inMemoryPaymentRepository{}, unusedTransactionInitializer{}, nil), NewResponder(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	router := handler.SetupRoutes()
 
 	req, _ := http.NewRequest("GET", "/health", nil)

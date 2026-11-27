@@ -57,6 +57,24 @@ type paystackResponse struct {
 	} `json:"data"`
 }
 
+// paystackVerifyResponse represents the response from Paystack transaction verification.
+type paystackVerifyResponse struct {
+	Status  bool   `json:"status"`
+	Message string `json:"message,omitempty"`
+	Data    struct {
+		ID             int    `json:"id"`
+		Domain         string `json:"domain"`
+		Status         string `json:"status"`
+		Reference      string `json:"reference"`
+		Amount         int64  `json:"amount"`
+		Currency       string `json:"currency"`
+		GatewayResponse string `json:"gateway_response"`
+		PaidAt         string `json:"paid_at"`
+		CreatedAt      string `json:"created_at"`
+		Channel        string `json:"channel"`
+	} `json:"data"`
+}
+
 func (c *PaystackClient) Provider() string {
 	return "paystack"
 }
@@ -165,4 +183,71 @@ func sanitizeErrorMessage(body []byte, secretKey string) string {
 	}
 
 	return sanitizeProviderMessage(resp.Message, secretKey)
+}
+
+// TransactionVerifier defines the interface for payment provider transaction verification.
+type TransactionVerifier interface {
+	Provider() string
+
+	// VerifyTransaction verifies a transaction with the provider and returns
+	// the transaction status, reference, amount, and currency.
+	VerifyTransaction(ctx context.Context, reference string) (status string, ref string, amount int64, currency string, err error)
+}
+
+// VerifyTransaction verifies a transaction with Paystack.
+func (c *PaystackClient) VerifyTransaction(ctx context.Context, reference string) (status string, ref string, amount int64, currency string, err error) {
+	// Build request URL
+	baseURL := c.config.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.paystack.co"
+	}
+	reqURL := fmt.Sprintf("%s/transaction/verify/%s", baseURL, url.PathEscape(reference))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return "", "", 0, "", fmt.Errorf("create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Authorization", "Bearer "+c.config.SecretKey)
+
+	// Execute request
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", "", 0, "", fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read at most one byte beyond the limit to detect oversized responses.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPaystackResponseBytes+1))
+	if err != nil {
+		return "", "", 0, "", fmt.Errorf("read response body: %w", err)
+	}
+	if len(body) > maxPaystackResponseBytes {
+		return "", "", 0, "", fmt.Errorf("paystack response body exceeds limit")
+	}
+
+	// Handle non-success responses
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", "", 0, "", fmt.Errorf("paystack API error: status=%d, message=%s", resp.StatusCode, sanitizeErrorMessage(body, c.config.SecretKey))
+	}
+
+	// Parse response
+	var verifyResp paystackVerifyResponse
+	if err := json.Unmarshal(body, &verifyResp); err != nil {
+		return "", "", 0, "", fmt.Errorf("parse response: %w", err)
+	}
+
+	// Validate response structure
+	if !verifyResp.Status {
+		return "", "", 0, "", fmt.Errorf("paystack returned non-success status: %s", sanitizeProviderMessage(verifyResp.Message, c.config.SecretKey))
+	}
+
+	// Extract transaction data
+	data := verifyResp.Data
+	if data.Reference == "" || data.Amount == 0 || data.Currency == "" || data.Status == "" {
+		return "", "", 0, "", fmt.Errorf("paystack response is missing transaction data")
+	}
+
+	return data.Status, data.Reference, data.Amount, data.Currency, nil
 }
