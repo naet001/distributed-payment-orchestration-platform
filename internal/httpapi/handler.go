@@ -66,7 +66,7 @@ type initializeTransactionRequest struct {
 
 // initializeTransactionResponse represents the response for successful transaction initialization.
 type initializeTransactionResponse struct {
-	AuthorizationURL string `json:"authorization_url"`
+	AuthorizationURL  string `json:"authorization_url"`
 	ProviderReference string `json:"provider_reference"`
 }
 
@@ -103,7 +103,7 @@ func (h *GinHandler) initializeTransaction(context *gin.Context) {
 	}
 
 	h.responder.Success(context, http.StatusOK, initializeTransactionResponse{
-		AuthorizationURL:   authURL.String(),
+		AuthorizationURL:  authURL.String(),
 		ProviderReference: providerRef,
 	})
 }
@@ -139,6 +139,8 @@ func (h *GinHandler) verifyPayment(context *gin.Context) {
 
 func (h *GinHandler) handlePaymentError(context *gin.Context, err error) {
 	switch {
+	case errors.Is(err, payment.ErrPaymentNotFound):
+		h.responder.Error(context, http.StatusNotFound, "payment not found", nil)
 	case errors.Is(err, payment.ErrInvalidPayment):
 		h.responder.Error(context, http.StatusBadRequest, "invalid payment", nil)
 	case errors.Is(err, payment.ErrInvalidPaymentStatus):
@@ -152,21 +154,6 @@ func (h *GinHandler) handlePaymentError(context *gin.Context, err error) {
 	case errors.Is(err, payment.ErrPaystackResultMismatch):
 		h.responder.Error(context, http.StatusConflict, "payment provider result mismatch", nil)
 	default:
-		// Check for not found errors
-		if isNotFoundError(err) {
-			h.responder.Error(context, http.StatusNotFound, "payment not found", nil)
-			return
-		}
 		h.responder.Error(context, http.StatusInternalServerError, "payment operation failed", err)
 	}
-}
-
-func isNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	const findPaymentPrefix = "find payment: "
-	return len(errStr) > 0 && (errStr == "payment not found" || 
-		(len(errStr) >= len(findPaymentPrefix) && errStr[:len(findPaymentPrefix)] == findPaymentPrefix))
 }

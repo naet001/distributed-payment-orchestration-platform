@@ -25,10 +25,11 @@ func newTestLogger() *slog.Logger {
 }
 
 type inMemoryPaymentRepository struct {
-	payments       map[string]*models.Payment
-	createErr      error
-	updateErr      error
-	transitionErr  error
+	payments      map[string]*models.Payment
+	findErr       error
+	createErr     error
+	updateErr     error
+	transitionErr error
 }
 
 type unusedTransactionInitializer struct{}
@@ -90,13 +91,16 @@ func (r *inMemoryPaymentRepository) FindByID(id uint) (*models.Payment, error) {
 			return p, nil
 		}
 	}
-	return nil, errors.New("payment not found")
+	return nil, repositories.ErrPaymentNotFound
 }
 
 func (r *inMemoryPaymentRepository) FindByReference(ref string) (*models.Payment, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
 	p, ok := r.payments[ref]
 	if !ok {
-		return nil, errors.New("payment not found")
+		return nil, repositories.ErrPaymentNotFound
 	}
 	copy := *p
 	return &copy, nil
@@ -248,7 +252,7 @@ func TestInitializeTransaction(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code)
 	var resp struct {
-		AuthorizationURL   string `json:"authorization_url"`
+		AuthorizationURL  string `json:"authorization_url"`
 		ProviderReference string `json:"provider_reference"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
@@ -318,6 +322,20 @@ func TestInitializeTransaction_PaymentNotFound(t *testing.T) {
 	router.ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestInitializeTransaction_DatabaseErrorReturnsInternalServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := newTestRepository()
+	repository.findErr = errors.New("connection timeout")
+	router := NewGinHandler(newTestPaymentService(repository, &mockTransactionInitializer{}, nil), NewResponder(newTestLogger())).SetupRoutes()
+
+	request := httptest.NewRequest(http.MethodPost, "/payments/PAY_TEST/initialize", strings.NewReader(`{"callback_url":"https://example.com/callback"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
 }
 
 func TestInitializeTransaction_RejectsNonPendingPayment(t *testing.T) {
