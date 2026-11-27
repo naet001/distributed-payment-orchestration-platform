@@ -16,6 +16,8 @@ import (
 )
 
 var (
+	// ErrPaymentNotFound indicates that the requested payment does not exist.
+	ErrPaymentNotFound        = errors.New("payment not found")
 	ErrInvalidPayment         = errors.New("invalid payment")
 	ErrInvalidPaymentStatus   = errors.New("invalid payment status")
 	ErrInvalidTransition      = errors.New("invalid payment status transition")
@@ -42,8 +44,9 @@ type CreateRequest struct {
 
 // Service coordinates payment operations.
 type Service struct {
-	repository      repositories.PaymentRepository
-	transactionInit TransactionInitializer
+	repository       repositories.PaymentRepository
+	transactionInit  TransactionInitializer
+	transactionVerif TransactionVerifier
 }
 
 // NewService creates a payment service with a transaction initializer.
@@ -54,6 +57,19 @@ func NewService(repository repositories.PaymentRepository, initializer Transacti
 	}
 }
 
+// WithTransactionVerifier sets the transaction verifier for payment verification.
+func (s *Service) WithTransactionVerifier(verifier TransactionVerifier) *Service {
+	s.transactionVerif = verifier
+	return s
+}
+
+func normalizeRepositoryError(err error) error {
+	if errors.Is(err, repositories.ErrPaymentNotFound) {
+		return ErrPaymentNotFound
+	}
+	return err
+}
+
 // TransitionStatus applies a valid lifecycle transition to a payment.
 func (s *Service) TransitionStatus(reference string, next models.PaymentStatus) (*models.Payment, error) {
 	if !validPaymentStatus(next) {
@@ -62,7 +78,7 @@ func (s *Service) TransitionStatus(reference string, next models.PaymentStatus) 
 
 	current, err := s.repository.FindByReference(reference)
 	if err != nil {
-		return nil, fmt.Errorf("find payment: %w", err)
+		return nil, fmt.Errorf("find payment: %w", normalizeRepositoryError(err))
 	}
 	if current.Status == next {
 		return current, nil
@@ -101,7 +117,7 @@ func allowedTransition(current, next models.PaymentStatus) bool {
 func (s *Service) ApplyPaystackResult(reference string, result PaystackResult) (*models.Payment, error) {
 	payment, err := s.repository.FindByReference(reference)
 	if err != nil {
-		return nil, fmt.Errorf("find payment: %w", err)
+		return nil, fmt.Errorf("find payment: %w", normalizeRepositoryError(err))
 	}
 
 	// Validate the result matches the payment
@@ -174,7 +190,7 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 	// Get the payment to validate it exists and get amount/currency
 	payment, err := s.repository.FindByReference(reference)
 	if err != nil {
-		return "", nil, fmt.Errorf("find payment: %w", err)
+		return "", nil, fmt.Errorf("find payment: %w", normalizeRepositoryError(err))
 	}
 
 	if payment.Status != models.PaymentStatusPending {
@@ -206,4 +222,38 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 	}
 
 	return providerRef, authURL, nil
+}
+
+// VerifyPayment verifies a payment with the configured provider.
+// It queries the provider for the transaction status and applies the result.
+func (s *Service) VerifyPayment(ctx context.Context, reference string) (*models.Payment, error) {
+	if s.transactionVerif == nil {
+		return nil, fmt.Errorf("transaction verifier not configured")
+	}
+
+	// Get the payment to validate it exists
+	payment, err := s.repository.FindByReference(reference)
+	if err != nil {
+		return nil, fmt.Errorf("find payment: %w", normalizeRepositoryError(err))
+	}
+
+	if payment.Provider != s.transactionVerif.Provider() {
+		return nil, fmt.Errorf("%w: payment=%q verifier=%q", ErrProviderMismatch, payment.Provider, s.transactionVerif.Provider())
+	}
+
+	// Verify transaction with provider
+	status, ref, amount, currency, err := s.transactionVerif.VerifyTransaction(ctx, reference)
+	if err != nil {
+		return nil, fmt.Errorf("verify transaction: %w", err)
+	}
+
+	// Apply the verified result
+	result := PaystackResult{
+		Status:    status,
+		Reference: ref,
+		Amount:    amount,
+		Currency:  currency,
+	}
+
+	return s.ApplyPaystackResult(reference, result)
 }

@@ -304,3 +304,227 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, repo, service.repository)
 	assert.Equal(t, initializer, service.transactionInit)
 }
+
+// mockTransactionVerifier implements TransactionVerifier for testing
+type mockTransactionVerifier struct {
+	t           *testing.T
+	status      string
+	ref         string
+	amount      int64
+	currency    string
+	err         error
+	calls       int
+}
+
+func (m *mockTransactionVerifier) Provider() string {
+	return "paystack"
+}
+
+func (m *mockTransactionVerifier) VerifyTransaction(
+	ctx context.Context,
+	reference string,
+) (status string, ref string, amount int64, currency string, err error) {
+	m.calls++
+	if m.t != nil {
+		assert.Equal(m.t, "PAY_TEST_REF", reference)
+	}
+	return m.status, m.ref, m.amount, m.currency, m.err
+}
+
+func TestService_VerifyPayment_RequiresVerifier(t *testing.T) {
+	repo := newMockRepository()
+	repo.Create(&models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	})
+	initializer := &mockTransactionInitializer{}
+	service := NewService(repo, initializer)
+	// No verifier configured
+
+	_, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "transaction verifier not configured")
+}
+
+func TestService_VerifyPayment_Success(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{
+		t:        t,
+		status:   "success",
+		ref:      "PAY_TEST_REF",
+		amount:   100000,
+		currency: "NGN",
+		err:      nil,
+	}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	result, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, models.PaymentStatusSucceeded, result.Status)
+	assert.Equal(t, 1, verifier.calls)
+}
+
+func TestService_VerifyPayment_PendingResultKeepsPending(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{
+		t:        t,
+		status:   "pending",
+		ref:      "PAY_TEST_REF",
+		amount:   100000,
+		currency: "NGN",
+		err:      nil,
+	}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	result, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, models.PaymentStatusPending, result.Status)
+}
+
+func TestService_VerifyPayment_FailedResultMarksFailed(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{
+		t:        t,
+		status:   "failed",
+		ref:      "PAY_TEST_REF",
+		amount:   100000,
+		currency: "NGN",
+		err:      nil,
+	}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	result, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, models.PaymentStatusFailed, result.Status)
+}
+
+func TestService_VerifyPayment_ProviderError(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{
+		err: errors.New("provider error"),
+	}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	_, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "verify transaction")
+	assert.Contains(t, err.Error(), "provider error")
+}
+
+func TestService_VerifyPayment_MismatchedProvider(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "stripe",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	_, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment provider does not match")
+}
+
+func TestService_VerifyPayment_PaymentNotFound(t *testing.T) {
+	repo := newMockRepository()
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	_, err := service.VerifyPayment(context.Background(), "NON_EXISTENT_REF")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "find payment")
+}
+
+func TestService_VerifyPayment_ResultMismatch(t *testing.T) {
+	repo := newMockRepository()
+	payment := &models.Payment{
+		Reference: "PAY_TEST_REF",
+		Amount:    100000,
+		Currency:  "NGN",
+		Status:    models.PaymentStatusPending,
+		Provider:  "paystack",
+		Email:     "customer@example.com",
+	}
+	repo.Create(payment)
+
+	initializer := &mockTransactionInitializer{}
+	verifier := &mockTransactionVerifier{
+		t:        t,
+		status:   "success",
+		ref:      "PAY_OTHER", // Mismatched reference
+		amount:   100000,
+		currency: "NGN",
+		err:      nil,
+	}
+	service := NewService(repo, initializer).WithTransactionVerifier(verifier)
+
+	_, err := service.VerifyPayment(context.Background(), "PAY_TEST_REF")
+
+	require.ErrorIs(t, err, ErrPaystackResultMismatch)
+}

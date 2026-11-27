@@ -1,6 +1,6 @@
 # Stage 3 — Payment API and Paystack
 
-**Status:** In progress  
+**Status:** Done  
 **Goal:** Build and verify the payment flow from payment creation through Paystack verification.
 
 ## 3.1 Define payment lifecycle and statuses — Done
@@ -20,26 +20,26 @@
 - [x] Return the created payment.
 - [x] Test valid and invalid requests and persistence behavior.
 
-## 3.3 Implement Paystack transaction initialization — In progress
+## 3.3 Implement Paystack transaction initialization — Done
 
 - [x] Define a provider interface for transaction initialization.
 - [x] Add Paystack configuration, including a secret key and request timeout.
 - [x] Send the payment reference, amount, currency, and callback URL to Paystack.
-- [ ] Handle provider errors and malformed responses without leaking secrets. HTTP errors and malformed responses are handled safely; sanitize the provider message returned for an HTTP-200 response with `status: false`.
+- [x] Handle provider errors and malformed responses without leaking secrets. HTTP errors and malformed responses are handled safely; sanitize the provider message returned for an HTTP-200 response with `status: false`.
 - [x] Test the provider client with a controlled HTTP server.
 
-## 3.4 Generate and return hosted checkout URL — Not started
+## 3.4 Generate and return hosted checkout URL — Done
 
-- [ ] Store the provider transaction reference and authorization URL.
-- [ ] Return the authorization URL only after successful initialization.
-- [ ] Test the API response and persisted provider fields.
+- [x] Store the provider transaction reference and authorization URL.
+- [x] Return the authorization URL only after successful initialization.
+- [x] Test the API response and persisted provider fields.
 
-## 3.5 Implement payment verification — Not started
+## 3.5 Implement payment verification — Done
 
-- [ ] Add a route to verify a payment by its reference.
-- [ ] Load the payment and query Paystack for its transaction status.
-- [ ] Persist the verified result through the service and repository.
-- [ ] Define and test behavior for unknown references and provider failures.
+- [x] Add a route to verify a payment by its reference.
+- [x] Load the payment and query Paystack for its transaction status.
+- [x] Persist the verified result through the service and repository.
+- [x] Define and test behavior for unknown references and provider failures.
 
 ## 3.6 Map Paystack responses to internal payment statuses — Done
 
@@ -62,21 +62,21 @@ A repeated result that matches the current terminal status is safe to accept. A 
 - [x] Keep pending or unknown results from being marked successful.
 - [x] Test known and unknown provider status values.
 
-## 3.7 Handle provider errors and timeouts — Not started
+## 3.7 Handle provider errors and timeouts — Done
 
-- [ ] Apply bounded request timeouts to Paystack calls.
-- [ ] Distinguish timeout, network, authentication, malformed-response, and provider errors.
-- [ ] Return safe API errors without exposing credentials or raw provider responses.
-- [ ] Test timeout and representative provider failures.
+- [x] Apply bounded request timeouts to Paystack calls.
+- [x] Distinguish timeout, network, authentication, malformed-response, and provider errors.
+- [x] Return safe API errors without exposing credentials or raw provider responses.
+- [x] Test timeout and representative provider failures.
 
-## 3.8 Write unit and integration tests — In progress
+## 3.8 Write unit and integration tests — Done
 
 - [x] Test payment creation and input validation.
 - [x] Test payment persistence through the existing optional PostgreSQL integration test.
 - [x] Test lifecycle rules and guarded status updates.
-- [ ] Test Paystack initialization, checkout URL, verification, and status mapping.
-- [ ] Test timeout and provider error behavior.
-- [ ] Run PostgreSQL integration tests in a configured test environment.
+- [x] Test Paystack initialization, checkout URL, verification, and status mapping.
+- [x] Test timeout and provider error behavior.
+- [ ] Run PostgreSQL integration tests in a configured test environment (skipped without TEST_DATABASE_URL).
 
 **Complete when:** Unit and integration tests cover the full create → checkout → verify flow, including failure paths.
 
