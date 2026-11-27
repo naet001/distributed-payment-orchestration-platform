@@ -1,9 +1,14 @@
 package repositories
 
 import (
+	"errors"
 	"example.com/payment-platform/internal/database"
 	"example.com/payment-platform/internal/models"
+	"gorm.io/gorm"
 )
+
+// ErrPaymentNotFound is returned when a payment cannot be found in the database.
+var ErrPaymentNotFound = errors.New("payment not found")
 
 // PaymentRepository defines the contract for payment data access.
 type PaymentRepository interface {
@@ -35,6 +40,9 @@ func (r *GormPaymentRepository) FindByID(id uint) (*models.Payment, error) {
 	var payment models.Payment
 	err := r.db.GetDB().First(&payment, id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrPaymentNotFound
+		}
 		return nil, err
 	}
 	return &payment, nil
@@ -45,6 +53,9 @@ func (r *GormPaymentRepository) FindByReference(ref string) (*models.Payment, er
 	var payment models.Payment
 	err := r.db.GetDB().Where("reference = ?", ref).First(&payment).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrPaymentNotFound
+		}
 		return nil, err
 	}
 	return &payment, nil

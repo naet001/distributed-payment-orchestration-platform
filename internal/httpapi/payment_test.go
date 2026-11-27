@@ -90,13 +90,13 @@ func (r *inMemoryPaymentRepository) FindByID(id uint) (*models.Payment, error) {
 			return p, nil
 		}
 	}
-	return nil, errors.New("payment not found")
+	return nil, repositories.ErrPaymentNotFound
 }
 
 func (r *inMemoryPaymentRepository) FindByReference(ref string) (*models.Payment, error) {
 	p, ok := r.payments[ref]
 	if !ok {
-		return nil, errors.New("payment not found")
+		return nil, repositories.ErrPaymentNotFound
 	}
 	copy := *p
 	return &copy, nil
@@ -149,6 +149,8 @@ func TestCreatePayment(t *testing.T) {
 	require.Equal(t, "USD", created.Currency)
 	require.Equal(t, "stripe", created.Provider)
 	require.Equal(t, models.PaymentStatusPending, created.Status)
+	// Email should be excluded from JSON response for privacy
+	require.Empty(t, created.Email, "email should be hidden in response")
 	require.Len(t, repository.payments, 1)
 	require.Equal(t, created.Reference, repository.payments[created.Reference].Reference)
 }

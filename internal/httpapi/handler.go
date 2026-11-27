@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"example.com/payment-platform/internal/payment"
+	"example.com/payment-platform/internal/repositories"
 	"github.com/gin-gonic/gin"
 )
 
@@ -110,10 +111,11 @@ func (h *GinHandler) initializeTransaction(context *gin.Context) {
 
 // verifyPaymentResponse represents the response for payment verification.
 type verifyPaymentResponse struct {
-	Reference string `json:"reference"`
-	Status    string `json:"status"`
-	Amount    int64  `json:"amount"`
-	Currency  string `json:"currency"`
+	Reference         string `json:"reference"`
+	Status            string `json:"status"`
+	Amount            int64  `json:"amount"`
+	Currency          string `json:"currency"`
+	ProviderReference *string `json:"provider_reference,omitempty"`
 }
 
 func (h *GinHandler) verifyPayment(context *gin.Context) {
@@ -130,15 +132,18 @@ func (h *GinHandler) verifyPayment(context *gin.Context) {
 	}
 
 	h.responder.Success(context, http.StatusOK, verifyPaymentResponse{
-		Reference: payment.Reference,
-		Status:    string(payment.Status),
-		Amount:    payment.Amount,
-		Currency:  payment.Currency,
+		Reference:         payment.Reference,
+		Status:            string(payment.Status),
+		Amount:            payment.Amount,
+		Currency:          payment.Currency,
+		ProviderReference: payment.ProviderReference,
 	})
 }
 
 func (h *GinHandler) handlePaymentError(context *gin.Context, err error) {
 	switch {
+	case errors.Is(err, repositories.ErrPaymentNotFound):
+		h.responder.Error(context, http.StatusNotFound, "payment not found", nil)
 	case errors.Is(err, payment.ErrInvalidPayment):
 		h.responder.Error(context, http.StatusBadRequest, "invalid payment", nil)
 	case errors.Is(err, payment.ErrInvalidPaymentStatus):
@@ -152,21 +157,6 @@ func (h *GinHandler) handlePaymentError(context *gin.Context, err error) {
 	case errors.Is(err, payment.ErrPaystackResultMismatch):
 		h.responder.Error(context, http.StatusConflict, "payment provider result mismatch", nil)
 	default:
-		// Check for not found errors
-		if isNotFoundError(err) {
-			h.responder.Error(context, http.StatusNotFound, "payment not found", nil)
-			return
-		}
 		h.responder.Error(context, http.StatusInternalServerError, "payment operation failed", err)
 	}
-}
-
-func isNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	const findPaymentPrefix = "find payment: "
-	return len(errStr) > 0 && (errStr == "payment not found" || 
-		(len(errStr) >= len(findPaymentPrefix) && errStr[:len(findPaymentPrefix)] == findPaymentPrefix))
 }
