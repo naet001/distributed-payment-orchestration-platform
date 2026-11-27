@@ -262,6 +262,8 @@ func TestInitializeTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stored.ProviderReference)
 	require.Equal(t, "ACC_123456", *stored.ProviderReference)
+	require.NotNil(t, stored.AuthorizationURL)
+	require.Equal(t, "https://paystack.com/pay/abc123", *stored.AuthorizationURL)
 }
 
 func TestInitializeTransaction_RequiresCallbackURL(t *testing.T) {

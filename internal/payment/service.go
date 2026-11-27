@@ -207,7 +207,10 @@ func (s *Service) InitializeTransaction(ctx context.Context, reference string, c
 		return "", nil, fmt.Errorf("initialize transaction: %w", err)
 	}
 
+	// Store the authorization URL for recovery
+	authURLStr := authURL.String()
 	payment.ProviderReference = &providerRef
+	payment.AuthorizationURL = &authURLStr
 	if err := s.repository.Update(payment); err != nil {
 		return "", nil, fmt.Errorf("save provider reference: %w", err)
 	}

@@ -73,6 +73,7 @@ func (r *GormPaymentRepository) Update(payment *models.Payment) error {
 		"provider":           payment.Provider,
 		"email":              payment.Email,
 		"provider_reference": payment.ProviderReference,
+		"authorization_url":  payment.AuthorizationURL,
 	}).Error
 }
 
