@@ -90,6 +90,12 @@ func (h *GinHandler) initializeTransaction(context *gin.Context) {
 		return
 	}
 
+	// Enforce HTTPS for callback URLs
+	if callbackURL.Scheme != "https" {
+		h.responder.Error(context, http.StatusBadRequest, "callback_url must use HTTPS", nil)
+		return
+	}
+
 	providerRef, authURL, err := h.payments.InitializeTransaction(context.Request.Context(), reference, request.CallbackURL)
 	if err != nil {
 		h.handlePaymentError(context, err)

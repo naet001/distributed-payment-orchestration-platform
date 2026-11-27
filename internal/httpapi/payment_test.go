@@ -290,6 +290,21 @@ func TestInitializeTransaction_RejectsInvalidCallbackURL(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+func TestInitializeTransaction_RejectsNonHTTPSCallbackURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := newTestRepository()
+	router := NewGinHandler(newTestPaymentService(repository, unusedTransactionInitializer{}, nil), NewResponder(newTestLogger())).SetupRoutes()
+
+	body := `{"callback_url":"http://example.com/callback"}`
+	request := httptest.NewRequest(http.MethodPost, "/payments/PAY_TEST/initialize", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "HTTPS")
+}
+
 func TestInitializeTransaction_PaymentNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repository := newTestRepository()
